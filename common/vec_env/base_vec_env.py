@@ -3,7 +3,7 @@ import inspect
 import pickle
 
 import cloudpickle
-from stable_baselines_tf2 import logger
+# from stable_baselines_tf2 import logger
 
 
 class AlreadySteppingError(Exception):
@@ -145,7 +145,7 @@ class VecEnv(ABC):
 
         :param mode: (str) the rendering type
         """
-        logger.warn('Render not defined for %s' % self)
+        # logger.warn('Render not defined for %s' % self)
 
     @property
     def unwrapped(self):

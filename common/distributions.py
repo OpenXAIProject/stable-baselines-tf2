@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.python.ops import math_ops
 from gym import spaces
 
-from stable_baselines_tf2.common.tf_util import linear
+from common.tf_util import linear
 
 
 class ProbabilityDistribution(object):

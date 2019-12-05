@@ -2,8 +2,8 @@ import os
 
 from gym.wrappers.monitoring import video_recorder
 
-from stable_baselines_tf2 import logger
-from stable_baselines_tf2.common.vec_env import VecEnvWrapper, DummyVecEnv, VecNormalize, VecFrameStack, SubprocVecEnv
+# from stable_baselines_tf2 import logger
+from common.vec_env import VecEnvWrapper, DummyVecEnv, VecNormalize, VecFrameStack, SubprocVecEnv
 
 
 class VecVideoRecorder(VecEnvWrapper):
@@ -87,7 +87,7 @@ class VecVideoRecorder(VecEnvWrapper):
             self.video_recorder.capture_frame()
             self.recorded_frames += 1
             if self.recorded_frames > self.video_length:
-                logger.info("Saving video to ", self.video_recorder.path)
+                # logger.info("Saving video to ", self.video_recorder.path)
                 self.close_video_recorder()
         elif self._video_enabled():
             self.start_video_recorder()

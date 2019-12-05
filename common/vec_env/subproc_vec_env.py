@@ -4,8 +4,8 @@ from collections import OrderedDict
 import gym
 import numpy as np
 
-from stable_baselines_tf2.common.vec_env import VecEnv, CloudpickleWrapper
-from stable_baselines_tf2.common.tile_images import tile_images
+from common.vec_env import VecEnv, CloudpickleWrapper
+from common.tile_images import tile_images
 
 
 def _worker(remote, parent_remote, env_fn_wrapper):

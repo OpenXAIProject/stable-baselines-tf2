@@ -1,1 +1,1 @@
-from stable_baselines_tf2.new_dqn.dqn import MlpPolicy, DQN, ReplayBuffer
+from dqn.dqn import MlpPolicy, DQN, ReplayBuffer

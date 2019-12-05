@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 from gym import spaces
 
-from stable_baselines_tf2.common.vec_env import VecEnvWrapper
+from common.vec_env import VecEnvWrapper
 
 
 class VecFrameStack(VecEnvWrapper):

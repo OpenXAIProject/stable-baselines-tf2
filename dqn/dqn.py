@@ -4,10 +4,10 @@ from gym.spaces import Discrete, MultiDiscrete, Box
 
 from tqdm import tqdm
 from functools import partial
-from stable_baselines_tf2.common import OffPolicyRLModel, tf_util, LinearSchedule
-from stable_baselines_tf2.common.replay_buffer import ReplayBuffer
-from stable_baselines_tf2.common.policies import BasePolicy, nature_cnn, register_policy
-from stable_baselines_tf2.common.vec_env import VecEnv
+from common import OffPolicyRLModel, tf_util, LinearSchedule
+from common.replay_buffer import ReplayBuffer
+from common.policies import BasePolicy, nature_cnn, register_policy
+from common.vec_env import VecEnv
 import copy
 
 class DQNPolicy(BasePolicy):

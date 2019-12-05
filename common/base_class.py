@@ -11,13 +11,12 @@ import numpy as np
 import gym
 import tensorflow as tf
 
-from stable_baselines_tf2.common import set_global_seeds
-from stable_baselines_tf2.common.save_util import (
+from common import set_global_seeds
+from common.save_util import (
     is_json_serializable, data_to_json, json_to_data, params_to_bytes, bytes_to_params
 )
-from stable_baselines_tf2.common.policies import get_policy_from_name, ActorCriticPolicy
-from stable_baselines_tf2.common.vec_env import VecEnvWrapper, VecEnv, DummyVecEnv
-from stable_baselines_tf2 import logger
+from common.policies import get_policy_from_name, ActorCriticPolicy
+from common.vec_env import VecEnvWrapper, VecEnv, DummyVecEnv
 
 
 class BaseRLModel(ABC):

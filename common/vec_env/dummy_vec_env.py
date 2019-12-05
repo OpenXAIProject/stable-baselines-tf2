@@ -1,8 +1,8 @@
 from collections import OrderedDict
 import numpy as np
 
-from stable_baselines_tf2.common.vec_env import VecEnv
-from stable_baselines_tf2.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info
+from common.vec_env import VecEnv
+from common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info
 
 
 class DummyVecEnv(VecEnv):
