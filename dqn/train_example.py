@@ -26,6 +26,7 @@ def main(args):
     model.learn(total_timesteps=args.max_timesteps)
 
     print("Saving model to cartpole_model.zip")
+    
     model.save("cartpole_model.zip")
 
 

@@ -9,6 +9,7 @@ from common.replay_buffer import ReplayBuffer
 from common.policies import BasePolicy, nature_cnn, register_policy
 from common.vec_env import VecEnv
 import copy
+import gym
 
 class DQNPolicy(BasePolicy):
     """
@@ -106,7 +107,7 @@ class FeedForwardPolicy(DQNPolicy):
         self.activation_function = act_fun
         self.qnet = QNetwork(layers, self.ob_space.shape, self.n_actions, name, layer_norm, dueling, n_batch)
 
-    # @tf.function
+    @tf.function
     def q_value(self, obs):
         self.q_values = self.qnet(obs)
         self.policy_proba = tf.nn.softmax(self.q_values, axis=-1)
@@ -131,7 +132,6 @@ class FeedForwardPolicy(DQNPolicy):
     def proba_step(self, obs, state=None, mask=None):        
         return self.policy_proba(obs)
 
-
 class MlpPolicy(FeedForwardPolicy):
     """
     Policy object that implements DQN policy, using a MLP (2 layers of 64)
@@ -153,8 +153,7 @@ class MlpPolicy(FeedForwardPolicy):
                                         feature_extraction="mlp", dueling=dueling,
                                         layer_norm=False, **_kwargs)
 
-class DQN:
-
+class DQN(OffPolicyRLModel):
     def __init__(self, policy_class, env, gamma=0.99, learning_rate=5e-4, buffer_size=50000, 
                  exploration_fraction=0.1, exploration_final_eps=0.02, train_freq=1, batch_size=32, double_q=True,
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,                 
@@ -187,16 +186,17 @@ class DQN:
         
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
         
-        self.proba_step = None
+        self.proba_step = self.policy.proba_step
         self.buffer_size = buffer_size
         self.replay_buffer = None        
-        self.exploration = None
-        self.params = None        
+        self.exploration = None        
         self.episode_reward = None
         self.n_actions = self.action_space.nvec if isinstance(self.action_space, MultiDiscrete) else self.action_space.n
 
         self.qfunc_layers        = self.policy.qnet.trainable_layers
         self.target_qfunc_layers = self.target_policy.qnet.trainable_layers
+        self.params              = self.qfunc_layers.trainable_variables + self.target_qfunc_layers.trainable_variables
+
         self.update_target()
 
     def setup_model(self):        
@@ -217,21 +217,18 @@ class DQN:
         else:
             return max_actions
     
-    # @tf.function                    
+    @tf.function                    
     def train(self, obs_t, act_t, rew_t, obs_tp, done_mask, importance_weights):                
 
-        q_tp1_best = tf.reduce_max(self.target_q_value(obs_tp), axis=1)                                          # (batch_size,)
-        q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best                                                      # (batch_size,)
-        q_t_selected_target = tf.cast(rew_t, tf.float32) + tf.cast(self.gamma, tf.float32) * q_tp1_best_masked  # (batch_size,)
+        q_tp1_best = tf.reduce_max(self.target_q_value(obs_tp), axis=1)
+        q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+        q_t_selected_target = tf.cast(rew_t, tf.float32) + tf.cast(self.gamma, tf.float32) * q_tp1_best_masked
 
         with tf.GradientTape() as tape:           
             q_t_selected = tf.reduce_sum(self.q_value(obs_t) * tf.one_hot(act_t, self.n_actions), axis=1)
             td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
             errors = tf_util.huber_loss(td_error)
-            weighted_error = tf.reduce_mean(errors)
-
-        # print("1", tape.watched_variables())      
-        # print("2", self.qfunc_layers.trainable_variables)
+            weighted_error = tf.reduce_mean(errors)       
 
         grads = tape.gradient(weighted_error, self.qfunc_layers.trainable_variables)    
         self.optimizer.apply_gradients(zip(grads, self.qfunc_layers.trainable_variables))
@@ -249,8 +246,7 @@ class DQN:
               reset_num_timesteps=True):
 
         # Create the replay buffer            
-        self.replay_buffer = ReplayBuffer(self.buffer_size)        
-        
+        self.replay_buffer = ReplayBuffer(self.buffer_size)                
         # Create the schedule for exploration starting from 1.
         self.exploration = LinearSchedule(schedule_timesteps=int(self.exploration_fraction * total_timesteps),
                                           initial_p=1.0,
@@ -261,20 +257,18 @@ class DQN:
 
         obs = self.env.reset()
         error = 0
-        # reset = True        
+        
         self.episode_reward = np.zeros((1,))
 
         for _ in tqdm(range(total_timesteps)):            
             # Take action and update exploration to the newest value            
-            eps         = self.exploration.value(self.num_timesteps)                                    
-            # reset       = False
+            eps         = self.exploration.value(self.num_timesteps)                                                
             env_action  = self.act(np.array(obs)[None], eps=0.1, stochastic=True)[0]                         
-
             new_obs, rew, done, info = self.env.step(env_action)
+
             # Store transition in the replay buffer.
             self.replay_buffer.add(obs, env_action, rew, new_obs, np.float32(done))
             obs = copy.deepcopy(new_obs)
-
             episode_rewards[-1] += rew
 
             if done:
@@ -283,8 +277,7 @@ class DQN:
                     episode_successes.append(float(maybe_is_success))
                 if not isinstance(self.env, VecEnv):
                     obs = self.env.reset()
-                episode_rewards.append(0.0)
-                # reset = True
+                episode_rewards.append(0.0)                
             
             can_sample = self.replay_buffer.can_sample(self.batch_size)
 
@@ -293,7 +286,6 @@ class DQN:
                     # Minimize the error in Bellman's equation on a batch sampled from replay buffer.                                    
                     obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.batch_size)                    
                     weights = np.ones_like(rewards)
-
                     td_errors, error = self.train(obses_t, actions, rewards, obses_tp1, dones, weights)                                                
 
                 if self.num_timesteps % self.target_network_update_freq == 0:
@@ -302,6 +294,7 @@ class DQN:
 
             if len(episode_rewards[-101:-1]) == 0:
                 mean_100ep_reward = -np.inf
+
             else:
                 mean_100ep_reward = round(float(np.mean(episode_rewards[-101:-1])), 1)              
 
@@ -315,7 +308,7 @@ class DQN:
 
             self.num_timesteps += 1
 
-        return self
+        return self        
 
     def predict(self, observation, state=None, mask=None, deterministic=True):
         observation = np.array(observation)        
@@ -365,11 +358,10 @@ class DQN:
             "gamma": self.gamma,            
             "observation_space": self.observation_space,
             "action_space": self.action_space,
-            "policy": self.policy,            
-            "_vectorize_action": self._vectorize_action,
-            "policy_kwargs": self.policy_kwargs
+            "policy": self.policy,                       
         }
 
         params_to_save = self.get_parameters()
 
         self._save_to_file(save_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
+
