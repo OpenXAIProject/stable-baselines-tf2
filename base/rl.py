@@ -15,11 +15,11 @@ from common import set_global_seeds
 from common.save_util import (
     is_json_serializable, data_to_json, json_to_data, params_to_bytes, bytes_to_params
 )
-from common.policies import get_policy_from_name, ActorCriticPolicy
+from base.policy import get_policy_from_name, ActorCriticPolicy
 from common.vec_env import VecEnvWrapper, VecEnv, DummyVecEnv
 
 
-class BaseRLModel(ABC):
+class BaseRLAlgorithm(ABC):
     """
     The base RL model
 
@@ -170,7 +170,8 @@ class BaseRLModel(ABC):
         :return: (OrderedDict) Dictionary of variable name -> ndarray of model's parameters.
         """
         parameters = self.get_parameter_list()
-        parameter_values = self.sess.run(parameters)
+        parameter_values = self.params
+        # parameter_values = self.sess.run(parameters)
         return_dictionary = OrderedDict((param.name, value) for param, value in zip(parameters, parameter_values))
         return return_dictionary
 
@@ -185,104 +186,14 @@ class BaseRLModel(ABC):
         # For each loadable parameter, create appropiate
         # placeholder and an assign op, and store them to
         # self.load_param_ops as dict of variable.name -> (placeholder, assign)
-        loadable_parameters = self.get_parameter_list()
+        # loadable_parameters = self.get_parameter_list()
         # Use OrderedDict to store order for backwards compatibility with
         # list-based params
-        self._param_load_ops = OrderedDict()
-        with self.graph.as_default():
-            for param in loadable_parameters:
-                placeholder = tf.compat.v1.placeholder(dtype=param.dtype, shape=param.shape)
-                # param.name is unique (tensorflow variables have unique names)
-                self._param_load_ops[param.name] = (placeholder, param.assign(placeholder))    
-                
-
-    def pretrain(self, dataset, n_epochs=10, learning_rate=1e-4,
-                 adam_epsilon=1e-8, val_interval=None):
-        """
-        Pretrain a model using behavior cloning:
-        supervised learning given an expert dataset.
-
-        NOTE: only Box and Discrete spaces are supported for now.
-
-        :param dataset: (ExpertDataset) Dataset manager
-        :param n_epochs: (int) Number of iterations on the training set
-        :param learning_rate: (float) Learning rate
-        :param adam_epsilon: (float) the epsilon value for the adam optimizer
-        :param val_interval: (int) Report training and validation losses every n epochs.
-            By default, every 10th of the maximum number of epochs.
-        :return: (BaseRLModel) the pretrained model
-        """
-        continuous_actions = isinstance(self.action_space, gym.spaces.Box)
-        discrete_actions = isinstance(self.action_space, gym.spaces.Discrete)
-
-        assert discrete_actions or continuous_actions, 'Only Discrete and Box action spaces are supported'
-
-        # Validate the model every 10% of the total number of iteration
-        if val_interval is None:
-            # Prevent modulo by zero
-            if n_epochs < 10:
-                val_interval = 1
-            else:
-                val_interval = int(n_epochs / 10)
-
-        with self.graph.as_default():
-            with tf.compat.v1.variable_scope('pretrain'):
-                if continuous_actions:
-                    obs_ph, actions_ph, deterministic_actions_ph = self._get_pretrain_placeholders()
-                    loss = tf.reduce_mean(input_tensor=tf.square(actions_ph - deterministic_actions_ph))
-                else:
-                    obs_ph, actions_ph, actions_logits_ph = self._get_pretrain_placeholders()
-                    # actions_ph has a shape if (n_batch,), we reshape it to (n_batch, 1)
-                    # so no additional changes is needed in the dataloader
-                    actions_ph = tf.expand_dims(actions_ph, axis=1)
-                    one_hot_actions = tf.one_hot(actions_ph, self.action_space.n)
-                    loss = tf.nn.softmax_cross_entropy_with_logits(
-                        logits=actions_logits_ph,
-                        labels=tf.stop_gradient(one_hot_actions)
-                    )
-                    loss = tf.reduce_mean(input_tensor=loss)
-                optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate, epsilon=adam_epsilon)
-                optim_op = optimizer.minimize(loss, var_list=self.params)
-
-            self.sess.run(tf.compat.v1.global_variables_initializer())
-
-        if self.verbose > 0:
-            print("Pretraining with Behavior Cloning...")
-
-        for epoch_idx in range(int(n_epochs)):
-            train_loss = 0.0
-            # Full pass on the training set
-            for _ in range(len(dataset.train_loader)):
-                expert_obs, expert_actions = dataset.get_next_batch('train')
-                feed_dict = {
-                    obs_ph: expert_obs,
-                    actions_ph: expert_actions,
-                }
-                train_loss_, _ = self.sess.run([loss, optim_op], feed_dict)
-                train_loss += train_loss_
-
-            train_loss /= len(dataset.train_loader)
-
-            if self.verbose > 0 and (epoch_idx + 1) % val_interval == 0:
-                val_loss = 0.0
-                # Full pass on the validation set
-                for _ in range(len(dataset.val_loader)):
-                    expert_obs, expert_actions = dataset.get_next_batch('val')
-                    val_loss_, = self.sess.run([loss], {obs_ph: expert_obs,
-                                                        actions_ph: expert_actions})
-                    val_loss += val_loss_
-
-                val_loss /= len(dataset.val_loader)
-                if self.verbose > 0:
-                    print("==== Training progress {:.2f}% ====".format(100 * (epoch_idx + 1) / n_epochs))
-                    print('Epoch {}'.format(epoch_idx + 1))
-                    print("Training loss: {:.6f}, Validation loss: {:.6f}".format(train_loss, val_loss))
-                    print()
-            # Free memory
-            del expert_obs, expert_actions
-        if self.verbose > 0:
-            print("Pretraining done.")
-        return self
+        # self._param_load_ops = OrderedDict()
+        # with self.graph.as_default():
+        # for param in loadable_parameters:                
+        #     # param.name is unique (tensorflow variables have unique names)
+        #     self._param_load_ops[param.name] = (placeholder, param.assign(placeholder))    
 
     @abstractmethod
     def learn(self, total_timesteps, callback=None, seed=None, log_interval=100, tb_log_name="run",
@@ -362,14 +273,12 @@ class BaseRLModel(ABC):
             all variables in the model. If False, loads parameters only for variables
             mentioned in the dictionary. Defaults to True.
         """
-        # Make sure we have assign ops
-        if self._param_load_ops is None:
-            self._setup_load_operations()
-
+        
         params = None
         if isinstance(load_path_or_dict, dict):
             # Assume `load_path_or_dict` is dict of variable.name -> ndarrays we want to load
             params = load_path_or_dict
+
         elif isinstance(load_path_or_dict, list):
             warnings.warn("Loading model parameters from a list. This has been replaced " +
                           "with parameter dictionaries with variable names and parameters. " +
@@ -386,17 +295,14 @@ class BaseRLModel(ABC):
             # Use existing deserializer to load the parameters.
             # We only need the parameters part of the file, so 
             # only load that part.
-            _, params = BaseRLModel._load_from_file(load_path_or_dict, load_data=False)
-
-        feed_dict = {}
-        param_update_ops = []
+            _, params = BaseRLAlgorithm._load_from_file(load_path_or_dict, load_data=False)
+        
         # Keep track of not-updated variables
         not_updated_variables = set(self._param_load_ops.keys())
-        for param_name, param_value in params.items():
-            placeholder, assign_op = self._param_load_ops[param_name]
-            feed_dict[placeholder] = param_value
+        for param_name, param_value in params.items():            
             # Create list of tf.assign operations for sess.run
-            param_update_ops.append(assign_op)
+            # param_update_ops.append(assign_op)
+            params.set_value(param_value)
             # Keep track which variables are updated
             not_updated_variables.remove(param_name)
 
@@ -405,7 +311,7 @@ class BaseRLModel(ABC):
             raise RuntimeError("Load dictionary did not contain all variables. " +
                                "Missing variables: {}".format(", ".join(not_updated_variables)))
 
-        self.sess.run(param_update_ops, feed_dict=feed_dict)
+        # self.sess.run(param_update_ops, feed_dict=feed_dict)
 
     @abstractmethod
     def save(self, save_path, cloudpickle=False):
@@ -467,6 +373,7 @@ class BaseRLModel(ABC):
         # try to serialize them blindly
         if data is not None:
             serialized_data = data_to_json(data)
+            
         if params is not None:
             serialized_params = params_to_bytes(params)
             # We also have to store list of the parameters
@@ -506,9 +413,9 @@ class BaseRLModel(ABC):
             (stable-baselines<=2.7.0) instead of a zip archive.
         """
         if cloudpickle:
-            BaseRLModel._save_to_file_cloudpickle(save_path, data, params)
+            BaseRLAlgorithm._save_to_file_cloudpickle(save_path, data, params)
         else:
-            BaseRLModel._save_to_file_zip(save_path, data, params)
+            BaseRLAlgorithm._save_to_file_zip(save_path, data, params)
 
     @staticmethod
     def _load_from_file_cloudpickle(load_path):
@@ -591,7 +498,7 @@ class BaseRLModel(ABC):
             # If load_path is file-like, seek back to beginning of file
             if not isinstance(load_path, str):
                 load_path.seek(0)
-            data, params = BaseRLModel._load_from_file_cloudpickle(load_path)
+            data, params = BaseRLAlgorithm._load_from_file_cloudpickle(load_path)
 
         return data, params
 
@@ -657,7 +564,7 @@ class BaseRLModel(ABC):
                              .format(observation_space))
 
 
-class ActorCriticRLModel(BaseRLModel):
+class ActorCriticRLAlgorithm(BaseRLAlgorithm):
     """
     The base class for Actor critic model
 
@@ -671,18 +578,14 @@ class ActorCriticRLModel(BaseRLModel):
 
     def __init__(self, policy, env, _init_setup_model, verbose=0, policy_base=ActorCriticPolicy,
                  requires_vec_env=False, policy_kwargs=None):
-        super(ActorCriticRLModel, self).__init__(policy, env, verbose=verbose, requires_vec_env=requires_vec_env,
+        super(ActorCriticRLAlgorithm, self).__init__(policy, env, verbose=verbose, requires_vec_env=requires_vec_env,
                                                  policy_base=policy_base, policy_kwargs=policy_kwargs)
 
         self.sess = None
         self.initial_state = None
         self.step = None
         self.proba_step = None
-        self.params = None
-
-    @abstractmethod
-    def setup_model(self):
-        pass
+        self.params = None    
 
     @abstractmethod
     def learn(self, total_timesteps, callback=None, seed=None,
@@ -833,7 +736,7 @@ class ActorCriticRLModel(BaseRLModel):
         return model
 
 
-class OffPolicyRLModel(BaseRLModel):
+class OffPolicyRLAlgorithm(BaseRLAlgorithm):
     """
     The base class for off policy RL model
 
@@ -848,14 +751,10 @@ class OffPolicyRLModel(BaseRLModel):
 
     def __init__(self, policy, env, replay_buffer=None, _init_setup_model=False, verbose=0, *,
                  requires_vec_env=False, policy_base=None, policy_kwargs=None):
-        super(OffPolicyRLModel, self).__init__(policy, env, verbose=verbose, requires_vec_env=requires_vec_env,
+        super(OffPolicyRLAlgorithm, self).__init__(policy, env, verbose=verbose, requires_vec_env=requires_vec_env,
                                                policy_base=policy_base, policy_kwargs=policy_kwargs)
 
-        self.replay_buffer = replay_buffer
-
-    @abstractmethod
-    def setup_model(self):
-        pass
+        self.replay_buffer = replay_buffer    
 
     @abstractmethod
     def learn(self, total_timesteps, callback=None, seed=None,
@@ -901,7 +800,6 @@ class OffPolicyRLModel(BaseRLModel):
         model.__dict__.update(data)
         model.__dict__.update(kwargs)
         model.set_env(env)
-        model.setup_model()
 
         model.load_parameters(params)
 
@@ -957,37 +855,6 @@ class _UnvecWrapper(VecEnvWrapper):
 
     def render(self, mode='human'):
         return self.venv.render(mode=mode)
-
-
-class SetVerbosity:
-    def __init__(self, verbose=0):
-        """
-        define a region of code for certain level of verbosity
-
-        :param verbose: (int) the verbosity level: 0 none, 1 training information, 2 tensorflow debug
-        """
-        self.verbose = verbose
-
-    def __enter__(self):
-        self.tf_level = os.environ.get('TF_CPP_MIN_LOG_LEVEL', '0')
-        self.log_level = logger.get_level()
-        self.gym_level = gym.logger.MIN_LEVEL
-
-        if self.verbose <= 1:
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-        if self.verbose <= 0:
-            logger.set_level(logger.DISABLED)
-            gym.logger.set_level(gym.logger.DISABLED)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.verbose <= 1:
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = self.tf_level
-
-        if self.verbose <= 0:
-            logger.set_level(self.log_level)
-            gym.logger.set_level(self.gym_level)
-
 
 class TensorboardWriter:
     def __init__(self, graph, tensorboard_log_path, tb_log_name, new_tb_log=True):
