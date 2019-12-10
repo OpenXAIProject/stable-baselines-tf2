@@ -11,7 +11,7 @@ def main(args):
 
     :param args: (ArgumentParser) the input arguments
     """
-    env = gym.make("CartPole-v0")
+    env = gym.make("HalfCheetah-v2")
 
     model = SAC(env=env)
     model.learn(total_timesteps=args.max_timesteps)
