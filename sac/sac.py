@@ -65,19 +65,19 @@ def apply_squashing_func(sample, logp):
 
 class Actor(tf.keras.layers.Layer):
 
-    def __init__(self, action_dim):
+    def __init__(self, obs_shape, action_dim):
         super(Actor, self).__init__()
         self.action_dim = action_dim
 
         # Actor parameters
-        self.l1 = tf.keras.layers.Dense(64, activation='relu', name='f0')
+        self.l1 = tf.keras.layers.Dense(64, activation='relu', name='f0', input_shape=(None,) + obs_shape)
         self.l2 = tf.keras.layers.Dense(64, activation='relu', name='f1')
         self.l3_mu = tf.keras.layers.Dense(action_dim, name='f2_mu')
         self.l3_log_std = tf.keras.layers.Dense(action_dim, name='f2_log_std')
 
     def call(self, inputs, **kwargs):
-        obs, = inputs
-        h = self.l1(obs)
+        # obs = inputs
+        h = self.l1(inputs)
         h = self.l2(h)
         mean = self.l3_mu(h)
         log_std = self.l3_log_std(h)
@@ -95,23 +95,24 @@ class Actor(tf.keras.layers.Layer):
         squahsed_action, _, dist = self.call(obs)
 
         if deterministic:
-            return dist.mean()
+            return dist.mean().numpy()
         else:
-            return squahsed_action
+            return squahsed_action.numpy()
 
 
 class VNetwork(tf.keras.layers.Layer):
 
-    def __init__(self, output_dim=1):
+    def __init__(self, obs_shape, output_dim=1):
         super(VNetwork, self).__init__()
 
-        self.v_l0 = tf.keras.layers.Dense(64, activation='relu', name='v/f0')
+        self.v_l0 = tf.keras.layers.Dense(64, activation='relu', name='v/f0', input_shape=(None,) + obs_shape)
         self.v_l1 = tf.keras.layers.Dense(64, activation='relu', name='v/f1')
         self.v_l2 = tf.keras.layers.Dense(output_dim, name='v/f2')
 
+    @tf.function
     def call(self, inputs, **kwargs):
-        obs, = inputs
-        h = self.v_l0(obs)
+        # obs, = inputs
+        h = self.v_l0(inputs)
         h = self.v_l1(h)
         v = self.v_l2(h)
         return v
@@ -119,16 +120,17 @@ class VNetwork(tf.keras.layers.Layer):
 
 class QNetwork(tf.keras.layers.Layer):
 
-    def __init__(self, num_critics=2):
+    def __init__(self, obs_shape, num_critics=2):
         super(QNetwork, self).__init__()
         self.num_critics = num_critics
 
         self.qs_l0, self.qs_l1, self.qs_l2 = [], [], []
         for i in range(self.num_critics):
-            self.qs_l0.append(tf.keras.layers.Dense(64, activation='relu', name='q%d/f0' % i))
+            self.qs_l0.append(tf.keras.layers.Dense(64, activation='relu', name='q%d/f0' % i, input_shape=(None,) + obs_shape))
             self.qs_l1.append(tf.keras.layers.Dense(64, activation='relu', name='q%d/f1' % i))
             self.qs_l2.append(tf.keras.layers.Dense(1, name='q%d/f2' % i))
-
+    
+    @tf.function
     def call(self, inputs, **kwargs):
         obs, action = inputs
         obs_action = tf.concat([obs, action], axis=1)
@@ -152,6 +154,7 @@ class SAC(tf.keras.layers.Layer):
 
         self.env = env
         self.max_action = self.env.action_space.high[0]
+        self.obs_shape = self.env.observation_space.shape
         self.state_dim = self.env.observation_space.shape[0]
         self.action_dim = self.env.action_space.shape[0]
         self.replay_buffer = ReplayBuffer(self.max_action, buffer_size=50000)
@@ -178,11 +181,10 @@ class SAC(tf.keras.layers.Layer):
             self.ent_coef = tf.constant(self.ent_coef)
 
         # Actor, Critic Networks
-        self.actor = Actor(self.action_dim)
-
-        self.v = VNetwork()
-        self.q = QNetwork(num_critics=self.num_critics)
-        self.v_target = VNetwork()
+        self.actor = Actor(self.obs_shape, self.action_dim)
+        self.v = VNetwork(self.obs_shape)
+        self.q = QNetwork(self.obs_shape, num_critics=self.num_critics)
+        self.v_target = VNetwork(self.obs_shape)
 
         self.var_list = self.v.trainable_variables + self.q.trainable_variables
         self.source_params = self.v.trainable_variables
@@ -204,26 +206,32 @@ class SAC(tf.keras.layers.Layer):
         for target, source in zip(self.target_params, self.source_params):
             target.set_weights( (1 - self.tau) * target.get_weights() + self.tau * source.get_weights() ) 
                     
+    @tf.function
     def train(self, obs, action, reward, next_obs, done):
+        obs = tf.cast(obs, tf.float32)
+        action = tf.cast(action, tf.float32)
+        reward = tf.cast(reward, tf.float32)
+        next_obs = tf.cast(next_obs, tf.float32)
+        done = tf.cast(done, tf.float32)
 
         with tf.GradientTape() as tape_actor:
             # Actor training (pi)
-            action_pi, logp_pi, dist = self.actor([obs])
+            action_pi, logp_pi, dist = self.actor(obs)
             qs_pi = self.q([obs, action_pi])
             actor_loss = tf.reduce_mean(self.ent_coef * logp_pi - tf.reduce_mean(qs_pi, axis=0))
 
         grads_actor = tape_actor.gradient(actor_loss, self.optimizer_variables)
         self.actor_optimizer.apply_gradients(zip(grads_actor, self.optimizer_variables))
 
-        v_target = self.v_target([next_obs])
+        v_target = self.v_target(next_obs)
         with tf.GradientTape() as tape_critic:
             # Critic training (V, Q)
-            v = self.v([obs])
+            v = self.v(obs)
             min_q_pi = tf.reduce_min(qs_pi, axis=0)
             v_backup = tf.stop_gradient(min_q_pi - self.ent_coef * logp_pi)
             v_loss = tf.losses.mean_squared_error(v_backup, v)
             
-            qs = self.q([obs, action])
+            qs = self.q(inputs=(obs, action))
             q_backup = tf.stop_gradient(reward + (1 - done) * self.gamma * v_target)  # batch x 1
             q_losses = [tf.losses.mean_squared_error(q_backup, qs[k]) for k in range(self.num_critics)]
             q_loss = tf.reduce_sum(q_losses)
@@ -239,11 +247,10 @@ class SAC(tf.keras.layers.Layer):
             grads_ent = tape_ent.gradient(ent_coef_loss, self.optimizer_variables)
             self.entropy_optimizer.apply_gradients(zip(grads_ent, self.optimizer_variables))
         
-        # ['actor_loss', 'v_loss', 'q_loss', 'mean(v)', 'mean(qs)', 'ent_coef', 'entropy', 'logp_pi']
-        return actor_loss, v_loss, q_loss, tf.reduce_mean(v), tf.reduce_mean(qs), self.ent_coef, \
-               tf.reduce_mean(dist.entropy), tf.reduce_mean(logp_pi)
+        return actor_loss, tf.reduce_mean(v_loss), q_loss, tf.reduce_mean(v), tf.reduce_mean(qs), self.ent_coef, \
+               tf.reduce_mean(dist.entropy()), tf.reduce_mean(logp_pi)
 
-    def learn(self, total_timesteps, log_interval=5000, seed=0, callback=None, verbose=1):
+    def learn(self, total_timesteps, log_interval=2, seed=0, callback=None, verbose=1):
         np.random.seed(seed)
 
         start_time = time.time()
@@ -256,7 +263,7 @@ class SAC(tf.keras.layers.Layer):
                     break
 
             # Take an action
-            action = self.predict(np.array([obs]), deterministic=False)[0].flatten()
+            action = np.reshape(self.predict(np.array([obs]), deterministic=False)[0], -1)
             next_obs, reward, done, info = self.env.step(action)
 
             # Store transition in the replay buffer.
@@ -269,14 +276,15 @@ class SAC(tf.keras.layers.Layer):
                 episode_rewards.append(0.0)
 
             if self.replay_buffer.can_sample(self.batch_size):
-                obs, action, reward, next_obs, done = self.replay_buffer.sample(self.batch_size)  # action is normalize
+                obss, actions, rewards, next_obss, dones = self.replay_buffer.sample(self.batch_size)  # action is normalize
 
-                step_info = self.train(obs, action, reward, next_obs, done)
+                step_info = self.train(obss, actions, rewards, next_obss, dones)
+                # print(len(episode_rewards))
                 if verbose >= 1 and done and len(episode_rewards) % log_interval == 0:
                     print('\n============================')
                     print('%12s: %10.3f' % ('ep_rewmean', np.mean(episode_rewards[-100:])))
                     for i, label in enumerate(self.info_labels):
-                        print('%12s: %10.3f' %(label, step_info[i]))
+                        print('%12s: %10s' %(label, step_info[i]))
                     print('============================\n')
 
                 self.update_target()
