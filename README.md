@@ -11,7 +11,7 @@ We recommend to use Anaconda virtual environment.
 With using `environment.yml`, you can easily install what you need to run!
 (However, to run experiments in Mujoco simulation tasks, make sure that you have the license for it.)
 
-To stat, enter the following commands in a terminal:
+To start, enter the following commands in a terminal:
 ```
 git clone https://github.com/tzs930/stable_baselines_tf2.git
 cd stable_baselines_tf2
