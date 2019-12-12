@@ -43,27 +43,14 @@ class BaseRLAlgorithm(ABC):
             self.action_space = env.action_space    
 
     @abstractmethod
-    def get_parameter_list(self):
-        """
-        Get tensorflow Variables of model's parameters
-
-        This includes all variables necessary for continuing training (saving / loading).
-
-        :return: (list) List of tensorflow Variables
-        """
-        raise NotImplementedError
-
     def get_parameters(self):
         """
         Get current model parameters as dictionary of variable name -> ndarray.
 
         :return: (OrderedDict) Dictionary of variable name -> ndarray of model's parameters.
         """
-        parameters = self.get_parameter_list()
-        parameter_values = self.params
-        
-        return_dictionary = OrderedDict((param.name, value) for param, value in zip(parameters, parameter_values))
-        return return_dictionary
+
+        return NotImplementedError
     
     @abstractmethod
     def learn(self, total_timesteps, callback=None, seed=None, log_interval=100, tb_log_name="run",

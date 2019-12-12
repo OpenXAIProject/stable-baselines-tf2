@@ -13,7 +13,7 @@ def main(args):
     """
     env = gym.make("HalfCheetah-v2")
 
-    model = SAC(env=env, ent_coef=0.001)
+    model = SAC(env=env)
     
     model.learn(total_timesteps=args.max_timesteps)
     model.save("halfcheetah_model.zip")

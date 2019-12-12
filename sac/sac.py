@@ -187,10 +187,12 @@ class SAC(ActorCriticRLAlgorithm):
             # Default initial value of ent_coef when learned
             init_value = 1.0
             self.log_ent_coef = tf.keras.backend.variable(init_value, dtype=tf.float32, name='log_ent_coef')
-            self.ent_coef = tf.exp(self.log_ent_coef)
+            self.ent_coefficient = tf.exp(self.log_ent_coef)
+            self.entropy_variables = [self.log_ent_coef]
 
         else:
-            self.ent_coef = tf.constant(self.ent_coef)
+            self.log_ent_coef = tf.math.log(self.ent_coef)
+            self.ent_coefficient = tf.constant(self.ent_coef)
 
         # Actor, Critic Networks
         self.actor = policy_class(self.obs_shape, self.action_dim)
@@ -204,12 +206,12 @@ class SAC(ActorCriticRLAlgorithm):
         self.actor_optimizer = tf.keras.optimizers.Adam(self.learning_rate)
         self.critic_optimizer = tf.keras.optimizers.Adam(self.learning_rate)
 
-        self.actor_variables += self.actor_optimizer.variables()
-        self.critic_variables += self.critic_optimizer.variables()
+        # self.actor_variables += self.actor_optimizer.variables()
+        # self.critic_variables += self.critic_optimizer.variables()
 
         if isinstance(ent_coef, str) and ent_coef == 'auto':
             self.entropy_optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
-            self.entropy_variables = self.entropy_optimizer.variables()
+            # self.entropy_variables += self.entropy_optimizer.variables()
 
         self.source_params = self.v.trainable_variables
         self.target_params = self.v_target.trainable_variables
@@ -234,38 +236,46 @@ class SAC(ActorCriticRLAlgorithm):
             # Actor training (pi)
             action_pi, logp_pi = self.actor.call(obs)            
             qs_pi = self.q.call(inputs=(obs, action_pi))
-            actor_loss = tf.reduce_mean(self.ent_coef * logp_pi - tf.reduce_mean(qs_pi, axis=0))            
+            actor_loss = tf.reduce_mean(tf.math.exp(self.log_ent_coef) * logp_pi - tf.reduce_mean(qs_pi, axis=0))            
 
-        grads_actor = tape_actor.gradient(actor_loss, self.actor_variables)
-        self.actor_optimizer.apply_gradients(zip(grads_actor, self.actor_variables))
+        actor_variables = self.actor.trainable_variables
+        grads_actor = tape_actor.gradient(actor_loss, actor_variables)
+        op_actor = self.actor_optimizer.apply_gradients(zip(grads_actor, actor_variables))
         
-        with tf.GradientTape() as tape_critic:
-            # Critic training (V, Q)
-            v = self.v.call(obs)
-            min_q_pi = tf.reduce_min(qs_pi, axis=0)
-            v_backup = tf.stop_gradient(min_q_pi - self.ent_coef * logp_pi)
-            v_loss = tf.losses.mean_squared_error(v_backup, v)
+        with tf.control_dependencies([op_actor]):
             v_target = self.v_target(next_obs)
-            
-            qs = self.q.call(inputs=(obs, action))
-            q_backup = tf.stop_gradient(reward + (1 - done) * self.gamma * v_target)  # batch x 1            
-            q_losses = [tf.losses.mean_squared_error(q_backup, qs[k]) for k in range(self.num_critics)] # 2 x batch
-            q_loss = tf.reduce_sum(q_losses, axis=0)
 
-            value_loss = tf.reduce_mean(v_loss + q_loss)
-            
-        grads_critic = tape_critic.gradient(value_loss, self.critic_variables)
-        self.critic_optimizer.apply_gradients(zip(grads_critic, self.critic_variables))
+            with tf.GradientTape() as tape_critic:
+                # Critic training (V, Q)
+                v = self.v.call(obs)
+                min_q_pi = tf.reduce_min(qs_pi, axis=0)
+                v_backup = tf.stop_gradient(min_q_pi - tf.math.exp(self.log_ent_coef) * tf.reshape(logp_pi, (-1,1)))
+                # v_loss = tf.losses.mean_squared_error(v_backup, v)
+                v_loss = 0.5 * tf.reduce_mean((v - v_backup) ** 2)
+                
+                qs = self.q.call(inputs=(obs, action))
+                q_backup = tf.stop_gradient(reward + (1 - done) * self.gamma * v_target)  # batch x 1            
+                # q_losses = [tf.losses.mean_squared_error(q_backup, qs[k]) for k in range(self)] # 2 x batch
+                q_losses = [0.5 * tf.reduce_mean((qs[k] - q_backup) ** 2) for k in range(self.num_critics)] 
+                q_loss = tf.reduce_sum(q_losses, axis=0)
+
+                value_loss = tf.reduce_sum(v_loss + q_loss)
+                
+            critic_variables = self.v.trainable_variables + self.q.trainable_variables
+            grads_critic = tape_critic.gradient(value_loss, critic_variables)
+            self.critic_optimizer.apply_gradients(zip(grads_critic, critic_variables))
 
         if isinstance(self.ent_coef, str) and self.ent_coef == 'auto':
-            with tf.GradientTape as tape_ent:
+
+            with tf.GradientTape() as tape_ent:
                 ent_coef_loss = -tf.reduce_mean(self.log_ent_coef * tf.stop_gradient(logp_pi + self.target_entropy))
 
-            grads_ent = tape_ent.gradient(ent_coef_loss, self.entropy_variables)
-            self.entropy_optimizer.apply_gradients(zip(grads_ent, self.entropy_variables))
+            entropy_variables = [self.log_ent_coef]
+            grads_ent = tape_ent.gradient(ent_coef_loss, entropy_variables)
+            self.entropy_optimizer.apply_gradients(zip(grads_ent, entropy_variables))
         
         return actor_loss, tf.reduce_mean(v_loss), tf.reduce_mean(q_loss), tf.reduce_mean(v), tf.reduce_mean(qs), \
-               self.ent_coef, tf.reduce_mean(dist.entropy()), tf.reduce_mean(logp_pi)
+               tf.math.exp(self.log_ent_coef), tf.reduce_mean(dist.entropy()), tf.reduce_mean(logp_pi)
 
     def learn(self, total_timesteps, log_interval=2, seed=0, callback=None, verbose=1):
         np.random.seed(seed)
@@ -281,7 +291,7 @@ class SAC(ActorCriticRLAlgorithm):
 
             # Take an action
             action = np.reshape(self.predict(np.array([obs]), deterministic=False)[0], -1)
-            next_obs, reward, done, info = self.env.step(action)
+            next_obs, reward, done, _ = self.env.step(action)
 
             # Store transition in the replay buffer.
             self.replay_buffer.add(obs, action, reward, next_obs, float(done))
@@ -299,9 +309,9 @@ class SAC(ActorCriticRLAlgorithm):
                 # print(len(episode_rewards))
                 if verbose >= 1 and done and len(episode_rewards) % log_interval == 0:
                     print('\n============================')
-                    print('%12s: %10.3f' % ('ep_rewmean', np.mean(episode_rewards[-10:])))
+                    print('%15s: %10.6f' % ('10ep_rewmean', np.mean(episode_rewards[-10:])))
                     for i, label in enumerate(self.info_labels):
-                        print('%12s: %10.3f' %(label, step_info[i].numpy()))
+                        print('%15s: %10.6f' %(label, step_info[i].numpy()))
                     print('============================\n')
 
                 self.update_target()
@@ -322,3 +332,4 @@ class SAC(ActorCriticRLAlgorithm):
             return rescaled_action[0], None
         else:
             return rescaled_action, None
+
