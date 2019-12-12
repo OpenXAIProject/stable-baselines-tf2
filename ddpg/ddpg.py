@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tqdm import tqdm
 import pickle
-
+from base.rl import ActorCriticRLAlgorithm
 
 class Actor(tf.keras.layers.Layer):
 
@@ -73,39 +73,8 @@ class DDPG(ActorCriticRLAlgorithm):
         
         if obs_rank == 1:
             return action[0], None
+
         else:
             return action, None
-
-    def get_parameters(self):
-        parameters = []
-        weights = self.get_weights()
-        for idx, variable in enumerate(self.trainable_variables):
-            weight = weights[idx]
-            parameters.append((variable.name, weight))
-        return parameters
-
-    def load_parameters(self, parameters, exact_match=False):
-        assert len(parameters) == len(self.weights)
-        weights = []
-        for variable, parameter in zip(self.weights, parameters):
-            name, value = parameter
-            if exact_match:
-                assert name == variable.name
-            weights.append(value)
-        self.set_weights(weights)
-
-    def save(self, filepath):
-        parameters = self.get_parameters()
-        with open(filepath, 'wb') as f:
-            pickle.dump(parameters, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    @staticmethod
-    def load(filepath, env, seed=0):
-        with open(filepath, 'rb') as f:
-            parameters = pickle.load(f)
-
-        model = DDPG(env, seed=seed)
-        model.load_parameters(parameters)
-        return model
-
+        
         

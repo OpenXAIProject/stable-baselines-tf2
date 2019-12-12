@@ -6,7 +6,7 @@ from collections import OrderedDict
 import json
 import zipfile
 
-import cloudpickle
+import pickle
 import numpy as np
 import gym
 import tensorflow as tf
@@ -30,7 +30,6 @@ class BaseRLAlgorithm(ABC):
     :param requires_vec_env: (bool) Does this model require a vectorized environment
     :param policy_base: (BasePolicy) the base policy used by this method
     """
-
     def __init__(self, policy_class, env):        
         self.policy_class = policy_class
         self.env = env                
@@ -151,7 +150,7 @@ class BaseRLAlgorithm(ABC):
         """
         raise NotImplementedError
 
-    def load_parameters(self, load_path_or_dict, exact_match=True):
+    def load_parameters(self, parameters):
         """
         Load model parameters from a file or a dictionary
 
@@ -162,44 +161,25 @@ class BaseRLAlgorithm(ABC):
 
         This does not load agent's hyper-parameters.
 
-        .. warning::
-            This function does not update trainer/optimizer variables (e.g. momentum).
-            As such training after using this function may lead to less-than-optimal results.
-
-        :param load_path_or_dict: (str or file-like or dict) Save parameter location
-            or dict of parameters as variable.name -> ndarrays to be loaded.
-        :param exact_match: (bool) If True, expects load dictionary to contain keys for
-            all variables in the model. If False, loads parameters only for variables
-            mentioned in the dictionary. Defaults to True.
+        :param parameters: (list) A list containing parameter values
         """
         raise NotImplementedError       
 
     @abstractmethod
-    def save(self, save_path, cloudpickle=False):
+    def save(self, save_path):
         """
         Save the current parameters to file
 
         :param save_path: (str or file-like) The save location
-        :param cloudpickle: (bool) Use older cloudpickle format instead of zip-archives.
         """
         raise NotImplementedError
 
-    @classmethod
     @abstractmethod
-    def load(cls, load_path, env=None, custom_objects=None, **kwargs):
+    def load(self, load_path):
         """
         Load the model from file
 
         :param load_path: (str or file-like) the saved parameter location
-        :param env: (Gym Envrionment) the new environment to run the loaded model on
-            (can be None if you only need prediction from a trained model)
-        :param custom_objects: (dict) Dictionary of objects to replace
-            upon loading. If a variable is present in this dictionary as a
-            key, it will not be deserialized and the corresponding item
-            will be used instead. Similar to custom_objects in
-            `keras.models.load_model`. Useful when you have an object in
-            file that can not be deserialized.
-        :param kwargs: extra arguments to change the model when loading
         """
         raise NotImplementedError()    
     
@@ -236,22 +216,40 @@ class ActorCriticRLAlgorithm(tf.keras.layers.Layer, BaseRLAlgorithm):
               log_interval=100, tb_log_name="run", reset_num_timesteps=True):
         pass
 
+    @abstractmethod
     def predict(self, observation, state=None, mask=None, deterministic=False):
         pass        
 
     def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
         pass
 
-    def get_parameter_list(self):
-        return self.params
+    def get_parameters(self):
+        parameters = []
+        weights = self.get_weights()
+        for idx, variable in enumerate(self.trainable_variables):
+            weight = weights[idx]
+            parameters.append((variable.name, weight))
+        return parameters
 
-    @abstractmethod
-    def save(self, save_path, cloudpickle=False):
-        pass
+    def load_parameters(self, parameters, exact_match=False):
+        assert len(parameters) == len(self.weights)
+        weights = []
+        for variable, parameter in zip(self.weights, parameters):
+            name, value = parameter
+            if exact_match:
+                assert name == variable.name
+            weights.append(value)
+        self.set_weights(weights)
 
-    @classmethod
-    def load(cls, load_path, env=None, custom_objects=None, **kwargs):
-        pass
+    def save(self, filepath):
+        parameters = self.get_parameters()
+        with open(filepath, 'wb') as f:
+            pickle.dump(parameters, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def load(self, filepath):
+        with open(filepath, 'rb') as f:
+            parameters = pickle.load(f)
+        self.load_parameters(parameters)
 
 
 class ValueBasedRLAlgorithm(tf.keras.layers.Layer, BaseRLAlgorithm):
@@ -284,11 +282,11 @@ class ValueBasedRLAlgorithm(tf.keras.layers.Layer, BaseRLAlgorithm):
         pass
 
     @abstractmethod
-    def save(self, save_path, cloudpickle=False):
+    def save(self, save_path):
         pass
 
-    @classmethod
-    def load(cls, load_path, env=None, custom_objects=None, **kwargs):
+    @abstractmethod
+    def load(self, load_path):
         """
         Load the model from file
 

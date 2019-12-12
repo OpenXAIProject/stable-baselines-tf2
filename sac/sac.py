@@ -322,35 +322,3 @@ class SAC(ActorCriticRLAlgorithm):
             return rescaled_action[0], None
         else:
             return rescaled_action, None
-
-    def get_parameters(self):
-        parameters = []
-        weights = self.get_weights()
-        for idx, variable in enumerate(self.trainable_variables):
-            weight = weights[idx]
-            parameters.append((variable.name, weight))
-        return parameters
-
-    def load_parameters(self, parameters, exact_match=False):
-        
-        assert len(parameters) == len(self.weights)
-        weights = []
-        for variable, parameter in zip(self.weights, parameters):
-            name, value = parameter
-            if exact_match:
-                assert name == variable.name
-            weights.append(value)
-        self.set_weights(weights)
-
-    def save(self, filepath):
-        parameters = self.get_parameters()
-        with open(filepath, 'wb') as f:
-            pickle.dump(parameters, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    def load(self, filepath):
-        with open(filepath, 'rb') as f:
-            parameters = pickle.load(f)
-
-        self.load_parameters(parameters)
-
-        
