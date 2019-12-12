@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 from gym.spaces import Discrete
-from base.policy import BasePolicy, nature_cnn, register_policy
+from base.policy import BasePolicy
 
 class DQNPolicy(BasePolicy):
     """
@@ -29,13 +29,6 @@ class DQNPolicy(BasePolicy):
         self.q_values = None
         self.dueling = dueling
         self.policy_proba = None
-
-    def _setup_init(self):
-        """
-        Set up action probability
-        """
-        # assert self.q_values is not None
-        # self.policy_proba = tf.nn.softmax(self.q_values)
 
     def step(self, obs, state=None, mask=None, deterministic=True):
         """
@@ -93,18 +86,12 @@ class QNetwork(tf.keras.layers.Layer):
 
 class FeedForwardPolicy(DQNPolicy):
     def __init__(self, ob_space, ac_space, n_env, n_steps, n_batch, name='q', reuse=False, layers=None,
-                 cnn_extractor=nature_cnn, feature_extraction="cnn",
                  layer_norm=False, dueling=False, act_fun=tf.nn.relu, **kwargs):
         super(FeedForwardPolicy, self).__init__(ob_space, ac_space, n_env, n_steps,
-                                                n_batch, dueling=dueling, reuse=reuse,
-                                                scale=(feature_extraction == "cnn"))
-
-        self._kwargs_check(feature_extraction, kwargs)
+                                                n_batch, dueling=dueling, reuse=reuse)
         if layers is None:
             layers = [64, 64]
 
-        self.feature_extraction = feature_extraction
-        self.cnn_extractor = cnn_extractor
         self.reuse = reuse
         self.kwargs = kwargs
         self.layer_norm = layer_norm

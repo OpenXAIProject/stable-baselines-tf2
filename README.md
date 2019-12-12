@@ -17,3 +17,15 @@ git clone https://github.com/tzs930/stable_baselines_tf2.git
 cd stable_baselines_tf2
 conda env create -f environment.yml
 ```
+
+## Progress
+- Abstract classes : 
+    - `base/rl.py` : Includes abstract classes for RL algorihtm
+    - `base/policy.py` : Includes abstract classes for RL policy
+    - `base/replay_buffer.py` :  Includes replay buffer implementation (which is for off-policy RL algorithms)
+
+- Algorithms : (Not working yet / Working but not verified / Verified (reproduced) )
+    - DQN : Working but not verified
+    - SAC : Working but not verified
+    - DDPG : Not working yet
+    - Algorithms planning to add : TRPO/PPO, GAIL

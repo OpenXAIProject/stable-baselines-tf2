@@ -7,10 +7,9 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tqdm import tqdm
 import pickle
-
+from base.rl import ActorCriticRLAlgorithm
 
 class ReplayBuffer:
-
     def __init__(self, max_action, buffer_size):
         self.obs = []
         self.action = []
@@ -51,6 +50,7 @@ class ReplayBuffer:
         return np.array(obs), np.array(action), np.array(reward)[:, None], np.array(next_obs), np.array(done)[:, None]
 
 
+@tf.function
 def apply_squashing_func(sample, logp):
     """
     Squash the ouput of the gaussian distribution and account for that in the log probability.
@@ -63,10 +63,10 @@ def apply_squashing_func(sample, logp):
     return squashed_action, squashed_action_logp
 
 
-class Actor(tf.keras.layers.Layer):
+class SquashedGaussianActor(tf.keras.layers.Layer):
 
     def __init__(self, obs_shape, action_dim):
-        super(Actor, self).__init__()
+        super(SquashedGaussianActor, self).__init__()
         self.action_dim = action_dim
 
         # Actor parameters
@@ -75,6 +75,7 @@ class Actor(tf.keras.layers.Layer):
         self.l3_mu = tf.keras.layers.Dense(action_dim, name='f2_mu')
         self.l3_log_std = tf.keras.layers.Dense(action_dim, name='f2_log_std')
 
+    @tf.function
     def call(self, inputs, **kwargs):
         # obs = inputs
         h = self.l1(inputs)
@@ -89,14 +90,25 @@ class Actor(tf.keras.layers.Layer):
         sampled_action_logp = dist.log_prob(sampled_action)
         squahsed_action, squahsed_action_logp = apply_squashing_func(sampled_action, sampled_action_logp)
 
-        return squahsed_action, squahsed_action_logp, dist
+        return squahsed_action, squahsed_action_logp
+
+    def dist(self, inputs):
+        h = self.l1(inputs)
+        h = self.l2(h)
+        mean = self.l3_mu(h)
+        log_std = self.l3_log_std(h)
+        std = tf.exp(log_std)
+        dist = tfp.distributions.MultivariateNormalDiag(mean, std)
+
+        return dist
 
     def step(self, obs, deterministic=False):
-        squahsed_action, _, dist = self.call(obs)
-
         if deterministic:
+            dist = self.dist(obs)
             return dist.mean().numpy()
+
         else:
+            squahsed_action, _ = self.call(obs)
             return squahsed_action.numpy()
 
 
@@ -144,10 +156,10 @@ class QNetwork(tf.keras.layers.Layer):
         return qs
 
 
-class SAC(tf.keras.layers.Layer):
+class SAC(ActorCriticRLAlgorithm):
 
-    def __init__(self, env, ent_coef='auto', seed=0):
-        super(SAC, self).__init__()
+    def __init__(self, env, policy_class=SquashedGaussianActor, ent_coef='auto', seed=0):
+        super(SAC, self).__init__(policy_class=policy_class, env=env)
         tf.compat.v1.set_random_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
@@ -167,7 +179,7 @@ class SAC(tf.keras.layers.Layer):
         self.target_entropy = -np.prod(self.env.action_space.shape).astype(np.float32)
         self.ent_coef = ent_coef
 
-        self.optimizer_variables = []
+        # self.optimizer_variables = []
         self.info_labels = ['actor_loss', 'v_loss', 'q_loss', 'mean(v)', 'mean(qs)', 'ent_coef', 'entropy', 'logp_pi']
 
         # Entropy coefficient (auto or fixed)
@@ -181,25 +193,26 @@ class SAC(tf.keras.layers.Layer):
             self.ent_coef = tf.constant(self.ent_coef)
 
         # Actor, Critic Networks
-        self.actor = Actor(self.obs_shape, self.action_dim)
+        self.actor = policy_class(self.obs_shape, self.action_dim)
         self.v = VNetwork(self.obs_shape)
         self.q = QNetwork(self.obs_shape, num_critics=self.num_critics)
         self.v_target = VNetwork(self.obs_shape)
 
-        self.var_list = self.v.trainable_variables + self.q.trainable_variables
-        self.source_params = self.v.trainable_variables
-        self.target_params = self.v_target.trainable_variables
-
+        self.actor_variables = self.actor.trainable_variables
+        self.critic_variables = self.v.trainable_variables + self.q.trainable_variables
+        
         self.actor_optimizer = tf.keras.optimizers.Adam(self.learning_rate)
         self.critic_optimizer = tf.keras.optimizers.Adam(self.learning_rate)
 
-        self.optimizer_variables += self.actor_optimizer.variables()
-        self.optimizer_variables += self.critic_optimizer.variables()
+        self.actor_variables += self.actor_optimizer.variables()
+        self.critic_variables += self.critic_optimizer.variables()
 
         if isinstance(ent_coef, str) and ent_coef == 'auto':
             self.entropy_optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
-            self.optimizer_variables += self.entropy_optimizer.variables()
+            self.entropy_variables = self.entropy_optimizer.variables()
 
+        self.source_params = self.v.trainable_variables
+        self.target_params = self.v_target.trainable_variables
         self.update_target()
     
     def update_target(self):
@@ -208,47 +221,51 @@ class SAC(tf.keras.layers.Layer):
                     
     @tf.function
     def train(self, obs, action, reward, next_obs, done):
+        # Casting from float64 to float32
         obs = tf.cast(obs, tf.float32)
         action = tf.cast(action, tf.float32)
         reward = tf.cast(reward, tf.float32)
         next_obs = tf.cast(next_obs, tf.float32)
         done = tf.cast(done, tf.float32)
 
+        dist = self.actor.dist(obs)
+
         with tf.GradientTape() as tape_actor:
             # Actor training (pi)
-            action_pi, logp_pi, dist = self.actor(obs)
-            qs_pi = self.q([obs, action_pi])
-            actor_loss = tf.reduce_mean(self.ent_coef * logp_pi - tf.reduce_mean(qs_pi, axis=0))
+            action_pi, logp_pi = self.actor.call(obs)            
+            qs_pi = self.q.call(inputs=(obs, action_pi))
+            actor_loss = tf.reduce_mean(self.ent_coef * logp_pi - tf.reduce_mean(qs_pi, axis=0))            
 
-        grads_actor = tape_actor.gradient(actor_loss, self.optimizer_variables)
-        self.actor_optimizer.apply_gradients(zip(grads_actor, self.optimizer_variables))
-
-        v_target = self.v_target(next_obs)
+        grads_actor = tape_actor.gradient(actor_loss, self.actor_variables)
+        self.actor_optimizer.apply_gradients(zip(grads_actor, self.actor_variables))
+        
         with tf.GradientTape() as tape_critic:
             # Critic training (V, Q)
-            v = self.v(obs)
+            v = self.v.call(obs)
             min_q_pi = tf.reduce_min(qs_pi, axis=0)
             v_backup = tf.stop_gradient(min_q_pi - self.ent_coef * logp_pi)
             v_loss = tf.losses.mean_squared_error(v_backup, v)
+            v_target = self.v_target(next_obs)
             
-            qs = self.q(inputs=(obs, action))
-            q_backup = tf.stop_gradient(reward + (1 - done) * self.gamma * v_target)  # batch x 1
-            q_losses = [tf.losses.mean_squared_error(q_backup, qs[k]) for k in range(self.num_critics)]
-            q_loss = tf.reduce_sum(q_losses)
+            qs = self.q.call(inputs=(obs, action))
+            q_backup = tf.stop_gradient(reward + (1 - done) * self.gamma * v_target)  # batch x 1            
+            q_losses = [tf.losses.mean_squared_error(q_backup, qs[k]) for k in range(self.num_critics)] # 2 x batch
+            q_loss = tf.reduce_sum(q_losses, axis=0)
 
-            value_loss = v_loss + q_loss
+            value_loss = tf.reduce_mean(v_loss + q_loss)
             
-        grads_critic = tape_critic.gradient(value_loss, self.optimizer_variables)
-        self.critic_optimizer.apply_gradients(zip(grads_critic, self.optimizer_variables))
+        grads_critic = tape_critic.gradient(value_loss, self.critic_variables)
+        self.critic_optimizer.apply_gradients(zip(grads_critic, self.critic_variables))
 
         if isinstance(self.ent_coef, str) and self.ent_coef == 'auto':
             with tf.GradientTape as tape_ent:
                 ent_coef_loss = -tf.reduce_mean(self.log_ent_coef * tf.stop_gradient(logp_pi + self.target_entropy))
-            grads_ent = tape_ent.gradient(ent_coef_loss, self.optimizer_variables)
-            self.entropy_optimizer.apply_gradients(zip(grads_ent, self.optimizer_variables))
+
+            grads_ent = tape_ent.gradient(ent_coef_loss, self.entropy_variables)
+            self.entropy_optimizer.apply_gradients(zip(grads_ent, self.entropy_variables))
         
-        return actor_loss, tf.reduce_mean(v_loss), q_loss, tf.reduce_mean(v), tf.reduce_mean(qs), self.ent_coef, \
-               tf.reduce_mean(dist.entropy()), tf.reduce_mean(logp_pi)
+        return actor_loss, tf.reduce_mean(v_loss), tf.reduce_mean(q_loss), tf.reduce_mean(v), tf.reduce_mean(qs), \
+               self.ent_coef, tf.reduce_mean(dist.entropy()), tf.reduce_mean(logp_pi)
 
     def learn(self, total_timesteps, log_interval=2, seed=0, callback=None, verbose=1):
         np.random.seed(seed)
@@ -282,9 +299,9 @@ class SAC(tf.keras.layers.Layer):
                 # print(len(episode_rewards))
                 if verbose >= 1 and done and len(episode_rewards) % log_interval == 0:
                     print('\n============================')
-                    print('%12s: %10.3f' % ('ep_rewmean', np.mean(episode_rewards[-100:])))
+                    print('%12s: %10.3f' % ('ep_rewmean', np.mean(episode_rewards[-10:])))
                     for i, label in enumerate(self.info_labels):
-                        print('%12s: %10s' %(label, step_info[i]))
+                        print('%12s: %10.3f' %(label, step_info[i].numpy()))
                     print('============================\n')
 
                 self.update_target()
@@ -315,6 +332,7 @@ class SAC(tf.keras.layers.Layer):
         return parameters
 
     def load_parameters(self, parameters, exact_match=False):
+        
         assert len(parameters) == len(self.weights)
         weights = []
         for variable, parameter in zip(self.weights, parameters):
@@ -329,11 +347,10 @@ class SAC(tf.keras.layers.Layer):
         with open(filepath, 'wb') as f:
             pickle.dump(parameters, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    @staticmethod
-    def load(filepath, env, seed):
+    def load(self, filepath):
         with open(filepath, 'rb') as f:
             parameters = pickle.load(f)
 
-        model = SAC(env, seed=seed)
-        model.load_parameters(parameters)
-        return model
+        self.load_parameters(parameters)
+
+        

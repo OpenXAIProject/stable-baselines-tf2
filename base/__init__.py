@@ -1,1 +1,1 @@
-from base.rl import BaseRLAlgorithm, ActorCriticRLAlgorithm, OffPolicyRLAlgorithm, TensorboardWriter
+from base.rl import BaseRLAlgorithm, ActorCriticRLAlgorithm, ValueBasedRLAlgorithm, TensorboardWriter

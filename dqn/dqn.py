@@ -7,14 +7,14 @@ from functools import partial
 from common import tf_util, LinearSchedule
 from common.vec_env import VecEnv
 
-from base.rl import OffPolicyRLAlgorithm
+from base.rl import ValueBasedRLAlgorithm
 from base.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from policy import MlpPolicy
+from dqn.policy import MlpPolicy
 
 import copy
 import gym
 
-class DQN(OffPolicyRLAlgorithm):
+class DQN(ValueBasedRLAlgorithm):
     def __init__(self, policy_class, env, gamma=0.99, learning_rate=5e-4, buffer_size=50000, 
                  exploration_fraction=0.1, exploration_final_eps=0.02, train_freq=1, batch_size=32, double_q=True,
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,    
@@ -150,7 +150,7 @@ class DQN(OffPolicyRLAlgorithm):
 
         for _ in tqdm(range(total_timesteps)):            
             # Take action and update exploration to the newest value            
-            eps        = self.exploration.value(self.num_timesteps)
+            eps = self.exploration.value(self.num_timesteps)
             env_action = self.act(np.array(obs)[None], eps=0.1, stochastic=True)[0]
             new_obs, rew, done, info = self.env.step(env_action)
 
