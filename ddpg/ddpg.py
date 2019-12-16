@@ -10,7 +10,7 @@ from base.rl import ActorCriticRLAlgorithm
 
 class Actor(tf.keras.layers.Layer):
 
-    def __init__(self, obs_shape, action_dim):
+    def __init__(self, env):
         super(Actor, self).__init__()
         assert NotImplementedError
     
