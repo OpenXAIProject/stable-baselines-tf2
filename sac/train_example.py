@@ -14,10 +14,10 @@ def main(args):
     env = gym.make("HalfCheetah-v2")
 
     model = SAC(env=env, seed=args.seed)    
-    ep_rewards, eval_rewards = model.learn(total_timesteps=args.max_timesteps)
+    ep_rewards = model.learn(total_timesteps=args.max_timesteps)
 
     model.save("results/halfcheetah_model_seed%d.zip"%(args.seed))
-    np.save('results/halfcheetah_rews_seed%d.npy', np.array(ep_rewards))
+    np.save('results/halfcheetah_rews_seed%d.npy'%(args.seed), np.array(ep_rewards))
     # np.save('results/halfcheetah_rews_seed%d.npy', np.array(eval_rewards))
     # print("Saving model to halfcheetah_model.zip")
 
@@ -25,6 +25,7 @@ def main(args):
     # model.load("halfcheetah_model.zip")
 
     model.evaluate(50)
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train SAC on HalfCheetah")

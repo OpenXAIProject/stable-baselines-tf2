@@ -297,8 +297,7 @@ class SAC(ActorCriticRLAlgorithm):
             tf.keras.backend.set_value(target, source.numpy())        
 
         start_time = time.time()
-        episode_rewards = [0.0]        
-        evaluation_rewards = []
+        episode_rewards = [0.0]                
 
         obs = self.env.reset()
         for step in tqdm(range(total_timesteps), desc='SAC', ncols=70):
@@ -332,15 +331,8 @@ class SAC(ActorCriticRLAlgorithm):
                     print('============================\n')
 
                 self.update_target(self.v_target.trainable_variables, self.v.trainable_variables)
-            
-            # if len(episode_rewards) % eval_interval == 0:
-            #     eval_rewards = np.mean(self.evaluate(1))
-            #     evaluation_rewards.append(eval_rewards)
-            #     print('\n============================')
-            #     print('%15s: %10.6f' % ('eval return', eval_rewards))
-            #     print('============================\n')
 
-        return episode_rewards, evaluation_rewards
+        return episode_rewards
 
 
     def predict(self, obs, deterministic=False):
