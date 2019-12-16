@@ -13,10 +13,12 @@ def main(args):
     """
     env = gym.make("HalfCheetah-v2")
 
-    model = SAC(env=env)
-    
-    model.learn(total_timesteps=args.max_timesteps)
-    model.save("halfcheetah_model.zip")
+    model = SAC(env=env, seed=args.seed)    
+    ep_rewards, eval_rewards = model.learn(total_timesteps=args.max_timesteps)
+
+    model.save("results/halfcheetah_model_seed%d.zip"%(args.seed))
+    np.save('results/halfcheetah_rews_seed%d.npy', np.array(ep_rewards))
+    # np.save('results/halfcheetah_rews_seed%d.npy', np.array(eval_rewards))
     # print("Saving model to halfcheetah_model.zip")
 
     # model.learn(total_timesteps=100)
@@ -26,6 +28,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train SAC on HalfCheetah")
-    parser.add_argument('--max-timesteps', default=500000, type=int, help="Maximum number of timesteps")
+    parser.add_argument('--max-timesteps', default=3000000, type=int, help="Maximum number of timesteps")
+    parser.add_argument('--seed', default=1, type=int, help="Random seed for training")
     args = parser.parse_args()
     main(args)

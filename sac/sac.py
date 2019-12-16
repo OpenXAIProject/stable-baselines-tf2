@@ -74,8 +74,8 @@ class SquashedGaussianActor(tf.keras.layers.Layer):
         self.max_action = env.action_space.high[0]
 
         # Actor parameters
-        self.l1 = tf.keras.layers.Dense(64, activation='relu', name='f0', input_shape=(None,) + self.obs_shape)
-        self.l2 = tf.keras.layers.Dense(64, activation='relu', name='f1')
+        self.l1 = tf.keras.layers.Dense(256, activation='relu', name='f0', input_shape=(None,) + self.obs_shape)
+        self.l2 = tf.keras.layers.Dense(256, activation='relu', name='f1')
         self.l3_mu = tf.keras.layers.Dense(self.action_dim, name='f2_mu')
         self.l3_log_std = tf.keras.layers.Dense(self.action_dim, name='f2_log_std')
 
@@ -124,8 +124,8 @@ class VNetwork(tf.keras.layers.Layer):
     def __init__(self, obs_shape, output_dim=1):
         super(VNetwork, self).__init__()
 
-        self.v_l0 = tf.keras.layers.Dense(64, activation='relu', name='v/f0', input_shape=(None,) + obs_shape)
-        self.v_l1 = tf.keras.layers.Dense(64, activation='relu', name='v/f1')
+        self.v_l0 = tf.keras.layers.Dense(256, activation='relu', name='v/f0', input_shape=(None,) + obs_shape)
+        self.v_l1 = tf.keras.layers.Dense(256, activation='relu', name='v/f1')
         self.v_l2 = tf.keras.layers.Dense(output_dim, name='v/f2')
 
     @tf.function
@@ -145,8 +145,8 @@ class QNetwork(tf.keras.layers.Layer):
 
         self.qs_l0, self.qs_l1, self.qs_l2 = [], [], []
         for i in range(self.num_critics):
-            self.qs_l0.append(tf.keras.layers.Dense(64, activation='relu', name='q%d/f0' % i, input_shape=(None,) + obs_shape))
-            self.qs_l1.append(tf.keras.layers.Dense(64, activation='relu', name='q%d/f1' % i))
+            self.qs_l0.append(tf.keras.layers.Dense(256, activation='relu', name='q%d/f0' % i, input_shape=(None,) + obs_shape))
+            self.qs_l1.append(tf.keras.layers.Dense(256, activation='relu', name='q%d/f1' % i))
             self.qs_l2.append(tf.keras.layers.Dense(1, name='q%d/f2' % i))
     
     @tf.function
@@ -182,7 +182,7 @@ class SAC(ActorCriticRLAlgorithm):
         self.gamma = 0.99
         self.tau = 0.005
         self.learning_rate = 3e-4
-        self.batch_size = 64
+        self.batch_size = 256
         self.target_entropy = -np.prod(self.env.action_space.shape).astype(np.float32)
         self.ent_coef = ent_coef
 
@@ -288,7 +288,8 @@ class SAC(ActorCriticRLAlgorithm):
         return actor_loss, tf.reduce_mean(v_loss), tf.reduce_mean(q_loss), tf.reduce_mean(v), tf.reduce_mean(qs), \
                tf.math.exp(self.log_ent_coef), tf.reduce_mean(dist.entropy()), tf.reduce_mean(logp_pi)
 
-    def learn(self, total_timesteps, log_interval=2, seed=0, callback=None, verbose=1):
+
+    def learn(self, total_timesteps, log_interval=2, seed=0, callback=None, verbose=1, eval_interval=1):
         np.random.seed(seed)
         
         self.initialize_variables()
@@ -297,6 +298,7 @@ class SAC(ActorCriticRLAlgorithm):
 
         start_time = time.time()
         episode_rewards = [0.0]        
+        evaluation_rewards = []
 
         obs = self.env.reset()
         for step in tqdm(range(total_timesteps), desc='SAC', ncols=70):
@@ -330,8 +332,16 @@ class SAC(ActorCriticRLAlgorithm):
                     print('============================\n')
 
                 self.update_target(self.v_target.trainable_variables, self.v.trainable_variables)
+            
+            # if len(episode_rewards) % eval_interval == 0:
+            #     eval_rewards = np.mean(self.evaluate(1))
+            #     evaluation_rewards.append(eval_rewards)
+            #     print('\n============================')
+            #     print('%15s: %10.6f' % ('eval return', eval_rewards))
+            #     print('============================\n')
 
-        return episode_rewards
+        return episode_rewards, evaluation_rewards
+
 
     def predict(self, obs, deterministic=False):
         obs_rank = len(obs.shape)
