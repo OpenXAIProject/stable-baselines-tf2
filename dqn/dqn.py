@@ -68,10 +68,6 @@ class DQN(ValueBasedRLAlgorithm):
 
         self.update_target()
 
-    def setup_model(self):        
-        assert not isinstance(self.action_space, Box), \
-            "Error: DQN cannot output a gym.spaces.Box action space."
-
     def act(self, obs, eps=1., stochastic=True):
         batch_size = np.shape(obs)[0]
         max_actions = np.argmax(self.q_function(obs), axis=1)

@@ -30,9 +30,10 @@ class BaseRLAlgorithm(ABC):
     :param requires_vec_env: (bool) Does this model require a vectorized environment
     :param policy_base: (BasePolicy) the base policy used by this method
     """
-    def __init__(self, policy_class, env):        
+    def __init__(self, policy_class, env, test_env):        
         self.policy_class = policy_class
         self.env = env                
+        self.test_env = test_env                
         self.observation_space = None
         self.action_space = None                
         self.num_timesteps = 0        
@@ -82,7 +83,7 @@ class BaseRLAlgorithm(ABC):
         """
         raise NotImplementedError
 
-    def evaluate(self, num_epsiodes=5):
+    def evaluate(self, num_epsiodes=5, deterministic=True):
         """
         Test the learned model in the given environment
 
@@ -94,11 +95,11 @@ class BaseRLAlgorithm(ABC):
         print("* Evaluating...")
         for i in range(num_epsiodes):
             done = False
-            obs = self.env.reset()
+            obs = self.test_env.reset()
             ret = 0
             while not done:
-                action = self.predict(np.array([obs]), deterministic=True)[0]
-                obs, rew, done, _ = self.env.step(action)
+                action = self.predict(np.array([obs]), deterministic=deterministic)[0]
+                obs, rew, done, _ = self.test_env.step(action)
                 ret += rew
             print("- Episode %3d : %6.3f" % (i+1, ret))
             episode_returns.append(ret)
@@ -106,7 +107,7 @@ class BaseRLAlgorithm(ABC):
         episode_returns = np.array(episode_returns)
         print("\n* Evaluation Result :")
         print("- Average of %d epsiode returns : %6.3f" % (num_epsiodes, np.mean(episode_returns)))
-        print("- Stddev. of %d epsiode returns : %6.3f" % (num_epsiodes, np.std(episode_returns)))
+        print("- Stddev. of %d epsiode returns : %6.3f\n" % (num_epsiodes, np.std(episode_returns)))
 
         return episode_returns
 
@@ -183,8 +184,10 @@ class ActorCriticRLAlgorithm(tf.keras.layers.Layer, BaseRLAlgorithm):
     :param requires_vec_env: (bool) Does this model require a vectorized environment
     """
 
-    def __init__(self, policy_class, env):
-        super(ActorCriticRLAlgorithm, self).__init__(policy_class, env)
+    def __init__(self, policy_class, env, test_env):                
+        
+        BaseRLAlgorithm.__init__(self, policy_class=policy_class, env=env, test_env=test_env)
+        tf.keras.layers.Layer.__init__(self)
         
         self.initial_state = None
         self.step = None

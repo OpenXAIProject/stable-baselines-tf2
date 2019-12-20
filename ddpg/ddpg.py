@@ -52,7 +52,7 @@ class DDPG(ActorCriticRLAlgorithm):
     
     def update_target(self):
         assert NotImplementedError    
-        # for target, source in zip(self.target_params, self.source_params):
+        # for target, source in zip(sel f.target_params, self.source_params):
         #     target.set_weights( (1 - self.tau) * target.get_weights() + self.tau * source.get_weights() ) 
                     
     # @tf.function

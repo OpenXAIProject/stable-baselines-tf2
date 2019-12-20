@@ -4,3 +4,7 @@ __pycache__/*
 __pycache__
 *.pyc
 *.zip
+.rsync.sh
+results/*
+results_final/*
+train.sh
