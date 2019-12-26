@@ -1,4 +1,4 @@
-name: tf20
+name: tf2
 channels:
   - defaults
 dependencies:

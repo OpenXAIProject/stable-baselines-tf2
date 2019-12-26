@@ -8,8 +8,8 @@ In this version, we pursuit following properties:
 
 ## Quick start
 We recommend to use Anaconda virtual environment. 
-With using `environment.yml`, you can easily install what you need to run!
-(However, to run experiments in Mujoco simulation tasks, make sure that you have the license for it.)
+With using `environment.yml` (or `environment_gpu.yml` if you plan to use GPUs), you can easily install what you need to run!
+(To run experiments in Mujoco simulation tasks, make sure that you have the license for it.)
 
 To start, enter the following commands in a terminal:
 ```
