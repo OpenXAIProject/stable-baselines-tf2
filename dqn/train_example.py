@@ -3,7 +3,8 @@ import argparse
 import gym
 import numpy as np
 
-from dqn import DQN, MlpPolicy
+from dqn import DQN
+from policy import MlpPolicy
 
 def main(args):
     """
@@ -23,8 +24,8 @@ def main(args):
         exploration_fraction=0.2,
         exploration_final_eps=0.01,
     )
-    model.load(load_path='cartpole_model.zip')
-    # model.learn(total_timesteps=args.max_timesteps)
+    # model.load(load_path='cartpole_model.zip')
+    model.learn(total_timesteps=args.max_timesteps)
 
     print("Saving model to cartpole_model.zip")
     
@@ -33,6 +34,6 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train DQN on cartpole")
-    parser.add_argument('--max-timesteps', default=500000, type=int, help="Maximum number of timesteps")
+    parser.add_argument('--max-timesteps', default=1000000, type=int, help="Maximum number of timesteps")
     args = parser.parse_args()
     main(args)

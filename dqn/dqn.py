@@ -9,7 +9,6 @@ from common.vec_env import VecEnv
 
 from base.rl import ValueBasedRLAlgorithm
 from base.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from dqn.policy import MlpPolicy
 
 import copy
 import gym
@@ -237,8 +236,16 @@ class DQN(ValueBasedRLAlgorithm):
 
         return actions_proba
 
+    def get_parameters(self):
+        parameters = []
+        weights = self.get_weights()
+        for idx, variable in enumerate(self.trainable_variables):
+            weight = weights[idx]
+            parameters.append((variable.name, weight))
+        return parameters
+
     def get_parameter_list(self):
-        return self.params
+        return self.params    
 
     def save(self, save_path, cloudpickle=False):
         # params
@@ -261,3 +268,5 @@ class DQN(ValueBasedRLAlgorithm):
 
         self._save_to_file(save_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
 
+    def load(self):
+        pass
