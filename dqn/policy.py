@@ -55,31 +55,39 @@ class DQNPolicy(BasePolicy):
 
 
 class QNetwork(tf.keras.layers.Layer):
-    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None):        
+    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):        
         self.layer_norm = layer_norm        
         self.dueling = dueling
-        self.l1 = tf.keras.layers.Dense(64, name=name+'/l1', activation='relu', input_shape=(n_batch,)+ obs_shape)        
-        self.l2 = tf.keras.layers.Dense(64, name=name+'/l2', activation='relu')
+        self.layers = []
+        self.layer_norms = []
 
-        if self.layer_norm:
-            self.l1_layer_norm = tf.keras.layers.LayerNormalization(epsilon=1e-4)
-            self.l2_layer_norm = tf.keras.layers.LayerNormalization(epsilon=1e-4)
+        for i, layersize in enumerate(layers):
+            if i == 0:
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1), 
+                                              activation=activation, input_shape=(n_batch,)+ obs_shape)
 
-        self.lout = tf.keras.layers.Dense(n_action, name=name+'/out')
-        self.trainable_layers = [self.l1, self.l2, self.lout]
+            else:
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1), 
+                                              activation=activation)
+
+            self.layers.append(layer)
+        
+            if self.layer_norm:
+                self.layer_norms.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+
+        self.layer_out = tf.keras.layers.Dense(n_action, name=name+'/out')
+        self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms 
 
     @tf.function
     def call(self, input):
-        h = self.l1(input)
-        if self.layer_norm:
-            h = self.l1_layer_norm(h)
+        h = input
+        for i, layer in enumerate(self.layers):
+            h = layer(h)
+            if self.layer_norm:
+                h = self.layer_norms[i](h)
         
-        h = self.l2(h)     
-        if self.layer_norm:   
-            h = self.l2_layer_norm(h)
-
-        q_out = self.lout(h)
-
+        q_out = self.layer_out(h)
+        
         # TODO : Implement Dueling Network Here
         return q_out
 

@@ -197,11 +197,11 @@ class DQN(ValueBasedRLAlgorithm):
 
             num_episodes = len(episode_rewards)
             if done and log_interval is not None and len(episode_rewards) % log_interval == 0:
-                print("- steps", self.num_timesteps)
-                print("- episodes", num_episodes)
-                print("- mean 100 episode reward", mean_100ep_reward)
-                print("- recent error", error)                
-                print("- % time spent exploring", int(100 * self.exploration.value(self.num_timesteps)))           
+                print("- steps : ", self.num_timesteps)
+                print("- episodes : ", num_episodes)
+                print("- mean 100 episode reward : %.4f" % mean_100ep_reward)
+                print("- recent mean TD error : %.4f" % error)                
+                print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))           
 
             self.num_timesteps += 1
 
