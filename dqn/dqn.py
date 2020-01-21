@@ -13,6 +13,7 @@ from base.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 import copy
 import gym
 
+
 class DQN(ValueBasedRLAlgorithm):
     def __init__(self, policy_class, env, gamma=0.99, learning_rate=5e-4, buffer_size=50000, 
                  exploration_fraction=0.1, exploration_final_eps=0.02, train_freq=1, batch_size=32, double_q=True,
@@ -70,14 +71,14 @@ class DQN(ValueBasedRLAlgorithm):
     def act(self, obs, eps=1., stochastic=True):
         batch_size = np.shape(obs)[0]
         max_actions = np.argmax(self.q_function(obs), axis=1)
-        
+
         if stochastic:                                  
             random_actions = np.random.randint(low=0, high=self.n_actions, size=batch_size)
             chose_random = np.random.uniform(size=np.stack([batch_size]), low=0, high=1) 
             epsgreedy_actions = np.where(chose_random < eps, random_actions, max_actions)
             
             return epsgreedy_actions
-
+###
         else:
             return max_actions
     
