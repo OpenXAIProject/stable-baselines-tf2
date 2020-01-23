@@ -23,6 +23,7 @@ def main(args):
         prioritized_replay=False,
         exploration_fraction=0.2,
         exploration_final_eps=0.01,
+        dueling=True
     )
     # model.load(load_path='cartpole_model.zip')
     model.learn(total_timesteps=args.max_timesteps)
