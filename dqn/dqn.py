@@ -25,7 +25,7 @@ class DQN(ValueBasedRLAlgorithm):
         self.env = env        
         self.observation_space = self.env.observation_space        
         self.action_space = self.env.action_space
-        self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q')         
+        self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q', dueling = True)
         self.q_function = self.policy.qnet.call                # Q-Function : obs -> action-dim vector        
 
         # Create another instance of DQNPolicy 
@@ -78,7 +78,7 @@ class DQN(ValueBasedRLAlgorithm):
             epsgreedy_actions = np.where(chose_random < eps, random_actions, max_actions)
             
             return epsgreedy_actions
-###
+
         else:
             return max_actions
     
@@ -86,13 +86,11 @@ class DQN(ValueBasedRLAlgorithm):
     def train(self, obs_t, act_t, rew_t, obs_tp, done_mask, importance_weights):                
 
         if self.double_q:
-            
             q_tp1_best_using_online_net = tf.argmax(self.double_q_function(obs_tp), axis=1)
             q_tp1_best = tf.reduce_sum(self.target_q_function(obs_tp) 
                                        * tf.one_hot(q_tp1_best_using_online_net, self.n_actions), axis=1)
         else:
             q_tp1_best = tf.reduce_max(self.target_q_function(obs_tp), axis=1)
-
 
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
         q_t_selected_target = tf.cast(rew_t, tf.float32) + tf.cast(self.gamma, tf.float32) * q_tp1_best_masked
@@ -188,7 +186,6 @@ class DQN(ValueBasedRLAlgorithm):
                 if self.prioritized_replay:
                     new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
                     self.replay_buffer.update_priorities(batch_idxes, new_priorities)
-
 
             if len(episode_rewards[-101:-1]) == 0:
                 mean_100ep_reward = -np.inf
