@@ -19,22 +19,23 @@ class DQN(ValueBasedRLAlgorithm):
                  exploration_fraction=0.1, exploration_final_eps=0.02, train_freq=1, batch_size=32, double_q=True,
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,    
                  prioritized_replay_alpha=0.6, prioritized_replay_beta0=0.4, prioritized_replay_beta_iters=None,
-                 prioritized_replay_eps=1e-6, _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False):
+                 prioritized_replay_eps=1e-6, _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
+                 dueling=False):
         
         # Create an instance of DQNPolicy (obs_space, act_space, n_env, n_steps, n_batch, name)
         self.env = env        
         self.observation_space = self.env.observation_space        
         self.action_space = self.env.action_space
-        self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q', dueling=True)
+        self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q', dueling=dueling)
         self.q_function = self.policy.qnet.call                # Q-Function : obs -> action-dim vector        
 
         # Create another instance of DQNPolicy 
-        self.target_policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'target_q', dueling=True)
+        self.target_policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'target_q', dueling=dueling)
         self.target_q_function = self.target_policy.qnet.call  # Q-Function : obs -> action-dim vector
 
         self.double_q = double_q
         if self.double_q:
-            self.double_policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'double_q')
+            self.double_policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'double_q', dueling=dueling)
             self.double_q_function = self.double_policy.qnet.call
 
         self.buffer_size = buffer_size
