@@ -56,17 +56,21 @@ class DQNPolicy(BasePolicy):
 
 class QNetwork(tf.keras.layers.Layer):
     def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):        
-        self.layer_norm = layer_norm        
+        # name == q or target_q
+
+        self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
         self.layer_norms = []
 
-        for i, layersize in enumerate(layers):
-            if i == 0:
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1), 
-                                              activation=activation, input_shape=(n_batch,)+ obs_shape)
+        for i, layersize in enumerate(layers):  # i = 0, 1S
+            # print("i: ", i)
+            # print("layer_size: ", layersize)
+            if i == 0:  # State?
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
+                                              activation=activation, input_shape=(n_batch,) + obs_shape)
 
-            else:
+            else:       # Action?
                 layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1), 
                                               activation=activation)
 
@@ -86,9 +90,23 @@ class QNetwork(tf.keras.layers.Layer):
             if self.layer_norm:
                 h = self.layer_norms[i](h)
         
-        q_out = self.layer_out(h)
-        
+        # q_out = self.layer_out(h)
+        action_scores = self.layer_out(h)   # A; expected advantage function value
+
         # TODO : Implement Dueling Network Here
+        if self.dueling:
+            h = input
+            layer_state = self.layers[0]
+            h = layer_state(h)
+            if self.layer_norm:
+                h = self.layer_norms[0](h)
+            state_scores = self.layer_out(h)
+            action_scores_mean = tf.reduce_mean(action_scores, axis=1)
+            action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
+
+            q_out = state_scores - action_scores_centered
+        else:
+            q_out = action_scores
         return q_out
 
 

@@ -13,6 +13,7 @@ from base.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 import copy
 import gym
 
+
 class DQN(ValueBasedRLAlgorithm):
     def __init__(self, policy_class, env, gamma=0.99, learning_rate=5e-4, buffer_size=50000, 
                  exploration_fraction=0.1, exploration_final_eps=0.02, train_freq=1, batch_size=32, double_q=True,
@@ -24,7 +25,7 @@ class DQN(ValueBasedRLAlgorithm):
         self.env = env        
         self.observation_space = self.env.observation_space        
         self.action_space = self.env.action_space
-        self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q')         
+        self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q', dueling = True)
         self.q_function = self.policy.qnet.call                # Q-Function : obs -> action-dim vector        
 
         # Create another instance of DQNPolicy 
@@ -70,7 +71,7 @@ class DQN(ValueBasedRLAlgorithm):
     def act(self, obs, eps=1., stochastic=True):
         batch_size = np.shape(obs)[0]
         max_actions = np.argmax(self.q_function(obs), axis=1)
-        
+
         if stochastic:                                  
             random_actions = np.random.randint(low=0, high=self.n_actions, size=batch_size)
             chose_random = np.random.uniform(size=np.stack([batch_size]), low=0, high=1) 
@@ -85,13 +86,11 @@ class DQN(ValueBasedRLAlgorithm):
     def train(self, obs_t, act_t, rew_t, obs_tp, done_mask, importance_weights):                
 
         if self.double_q:
-            
             q_tp1_best_using_online_net = tf.argmax(self.double_q_function(obs_tp), axis=1)
             q_tp1_best = tf.reduce_sum(self.target_q_function(obs_tp) 
                                        * tf.one_hot(q_tp1_best_using_online_net, self.n_actions), axis=1)
         else:
             q_tp1_best = tf.reduce_max(self.target_q_function(obs_tp), axis=1)
-
 
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
         q_t_selected_target = tf.cast(rew_t, tf.float32) + tf.cast(self.gamma, tf.float32) * q_tp1_best_masked
@@ -187,7 +186,6 @@ class DQN(ValueBasedRLAlgorithm):
                 if self.prioritized_replay:
                     new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
                     self.replay_buffer.update_priorities(batch_idxes, new_priorities)
-
 
             if len(episode_rewards[-101:-1]) == 0:
                 mean_100ep_reward = -np.inf
