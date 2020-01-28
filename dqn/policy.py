@@ -59,7 +59,8 @@ class StateValueNetwork(tf.keras.layers.Layer):
     def __init__(self, layersize, obs_shape, n_action, name='sv', layer_norm=False, n_batch=None, activation='relu'):
         self.layer_norm = layer_norm
 
-        self.layer = tf.keras.layers.Dense(layersize, name=name + '/l1',activation=activation, input_shape=(n_batch,) + obs_shape)
+        self.layer = tf.keras.layers.Dense(layersize, name=name + '/l1', activation=activation,
+                                           input_shape=(n_batch,) + obs_shape)
 
         if self.layer_norm:
             self.layer_norms = tf.keras.layers.LayerNormalization(epsilon=1e-4)
@@ -85,7 +86,8 @@ class QNetwork(tf.keras.layers.Layer):
         self.layer_norms = []
 
         if dueling:
-            self.sv_net = StateValueNetwork(self, layersize, obs_shape, n_action, name='sv', layer_norm, n_batch, activation)
+            self.sv_net = StateValueNetwork(self, layers[0], obs_shape=obs_shape, n_action=n_action, name='sv',
+                                            layer_norm=layer_norm, n_batch=n_batch, activation=activation)
 
         # tf.keras.backend.set_floatx('float64')
 
