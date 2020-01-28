@@ -4,6 +4,7 @@ import numpy as np
 from gym.spaces import Discrete
 from base.policy import BasePolicy
 
+
 class DQNPolicy(BasePolicy):
     """
     Policy object that implements a DQN policy
@@ -54,20 +55,45 @@ class DQNPolicy(BasePolicy):
         raise NotImplementedError
 
 
+class StateValueNetwork(tf.keras.layers.Layer):
+    def __init__(self, layersize, obs_shape, n_action, name='sv', layer_norm=False, n_batch=None, activation='relu'):
+        self.layer_norm = layer_norm
+
+        self.layer = tf.keras.layers.Dense(layersize, name=name + '/l1',activation=activation, input_shape=(n_batch,) + obs_shape)
+
+        if self.layer_norm:
+            self.layer_norms = tf.keras.layers.LayerNormalization(epsilon=1e-4)
+
+        self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
+        self.trainable_layers = self.layer + [self.layer_out] + self.layer_norms
+
+    def call(self, input):
+        h = self.layer(input)
+        if self.layer_norm:
+            h = self.layer_norms(h)
+        q_out = self.layer_out(h)
+
+        return q_out
+
+
 class QNetwork(tf.keras.layers.Layer):
     def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):        
         # name == q or target_q
-
         self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
         self.layer_norms = []
 
+        if dueling:
+            self.sv_net = StateValueNetwork(self, layersize, obs_shape, n_action, name='sv', layer_norm, n_batch, activation)
+
+        # tf.keras.backend.set_floatx('float64')
+
         for i, layersize in enumerate(layers):  # i = 0, 1S
             # print("i: ", i)
             # print("layer_size: ", layersize)
             if i == 0:  # State?
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l1',
                                               activation=activation, input_shape=(n_batch,) + obs_shape)
 
             else:       # Action?
@@ -75,7 +101,7 @@ class QNetwork(tf.keras.layers.Layer):
                                               activation=activation)
 
             self.layers.append(layer)
-        
+
             if self.layer_norm:
                 self.layer_norms.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
 
@@ -87,6 +113,7 @@ class QNetwork(tf.keras.layers.Layer):
         h = input
         for i, layer in enumerate(self.layers):
             h = layer(h)
+
             if self.layer_norm:
                 h = self.layer_norms[i](h)
         
@@ -95,12 +122,7 @@ class QNetwork(tf.keras.layers.Layer):
 
         # TODO : Implement Dueling Network Here
         if self.dueling:
-            h = input
-            layer_state = self.layers[0]
-            h = layer_state(h)
-            if self.layer_norm:
-                h = self.layer_norms[0](h)
-            state_scores = self.layer_out(h)
+            state_scores = self.sv_net(input)
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
 
@@ -108,7 +130,6 @@ class QNetwork(tf.keras.layers.Layer):
         else:
             q_out = action_scores
         return q_out
-
 
 class FeedForwardPolicy(DQNPolicy):
     def __init__(self, ob_space, ac_space, n_env, n_steps, n_batch, name='q', reuse=False, layers=None,
