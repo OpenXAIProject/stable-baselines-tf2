@@ -55,28 +55,6 @@ class DQNPolicy(BasePolicy):
         raise NotImplementedError
 
 
-# class StateValueNetwork(tf.keras.layers.Layer):
-#     def __init__(self, layersize, obs_shape, n_action, name='sv', layer_norm=False, n_batch=None, activation='relu'):
-#         self.layer_norm = layer_norm
-#
-#         self.layer = tf.keras.layers.Dense(layersize, name=name + '/l1', activation=activation,
-#                                            input_shape=(n_batch,) + obs_shape)
-#
-#         if self.layer_norm:
-#             self.layer_norms = tf.keras.layers.LayerNormalization(epsilon=1e-4)
-#
-#         self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
-#         self.trainable_layers = self.layer + [self.layer_out] + self.layer_norms
-#
-#     def call(self, input):
-#         h = self.layer(input)
-#         if self.layer_norm:
-#             h = self.layer_norms(h)
-#         q_out = self.layer_out(h)
-#
-#         return q_out
-
-
 class QNetwork(tf.keras.layers.Layer):
     def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):
         self.layer_norm = layer_norm

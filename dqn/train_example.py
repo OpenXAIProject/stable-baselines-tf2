@@ -1,7 +1,6 @@
 import argparse
 
 import gym
-import numpy as np
 
 from dqn import DQN
 from policy import MlpPolicy
@@ -19,11 +18,11 @@ def main(args):
         policy_class=MlpPolicy,
         learning_rate=5e-4,
         buffer_size=50000,
-        double_q=False,
-        prioritized_replay=False,
+        double_q=True,
+        prioritized_replay=True,
         exploration_fraction=0.2,
         exploration_final_eps=0.01,
-        dueling=True
+        dueling=False
     )
     # model.load(load_path='cartpole_model.zip')
     model.learn(total_timesteps=args.max_timesteps)
