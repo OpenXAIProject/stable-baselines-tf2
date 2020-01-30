@@ -55,60 +55,62 @@ class DQNPolicy(BasePolicy):
         raise NotImplementedError
 
 
-class StateValueNetwork(tf.keras.layers.Layer):
-    def __init__(self, layersize, obs_shape, n_action, name='sv', layer_norm=False, n_batch=None, activation='relu'):
-        self.layer_norm = layer_norm
-
-        self.layer = tf.keras.layers.Dense(layersize, name=name + '/l1', activation=activation,
-                                           input_shape=(n_batch,) + obs_shape)
-
-        if self.layer_norm:
-            self.layer_norms = tf.keras.layers.LayerNormalization(epsilon=1e-4)
-
-        self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
-        self.trainable_layers = self.layer + [self.layer_out] + self.layer_norms
-
-    def call(self, input):
-        h = self.layer(input)
-        if self.layer_norm:
-            h = self.layer_norms(h)
-        q_out = self.layer_out(h)
-
-        return q_out
+# class StateValueNetwork(tf.keras.layers.Layer):
+#     def __init__(self, layersize, obs_shape, n_action, name='sv', layer_norm=False, n_batch=None, activation='relu'):
+#         self.layer_norm = layer_norm
+#
+#         self.layer = tf.keras.layers.Dense(layersize, name=name + '/l1', activation=activation,
+#                                            input_shape=(n_batch,) + obs_shape)
+#
+#         if self.layer_norm:
+#             self.layer_norms = tf.keras.layers.LayerNormalization(epsilon=1e-4)
+#
+#         self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
+#         self.trainable_layers = self.layer + [self.layer_out] + self.layer_norms
+#
+#     def call(self, input):
+#         h = self.layer(input)
+#         if self.layer_norm:
+#             h = self.layer_norms(h)
+#         q_out = self.layer_out(h)
+#
+#         return q_out
 
 
 class QNetwork(tf.keras.layers.Layer):
-    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):        
-        # name == q or target_q
+    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):
         self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
         self.layer_norms = []
 
-        if dueling:
-            self.sv_net = StateValueNetwork(self, layers[0], obs_shape=obs_shape, n_action=n_action, name='sv',
-                                            layer_norm=layer_norm, n_batch=n_batch, activation=activation)
-
-        # tf.keras.backend.set_floatx('float64')
-
-        for i, layersize in enumerate(layers):  # i = 0, 1S
-            # print("i: ", i)
-            # print("layer_size: ", layersize)
-            if i == 0:  # State?
+        for i, layersize in enumerate(layers):
+            if i == 0:
                 layer = tf.keras.layers.Dense(layersize, name=name+'/l1',
                                               activation=activation, input_shape=(n_batch,) + obs_shape)
 
-            else:       # Action?
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1), 
+            else:
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
                                               activation=activation)
 
             self.layers.append(layer)
 
             if self.layer_norm:
-                self.layer_norms.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+                self.layer_norms_QNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+        self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
+        self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms
 
-        self.layer_out = tf.keras.layers.Dense(n_action, name=name+'/out')
-        self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms 
+        if self.dueling:
+            self.layer_norms_VNet = []
+            self.layer_VNet = []
+            self.layer_VNet.append(tf.keras.layers.Dense(layers[0], name='v/l1', activation=activation,
+                                                    input_shape=(n_batch,) + obs_shape))
+
+            if self.layer_norm:
+                self.layer_norms_VNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+
+            self.layer_out_VNet = tf.keras.layers.Dense(n_action, name='v/out')
+            self.trainable_layers = self.trainable_layers + self.layer_VNet + [self.layer_out_VNet] + self.layer_norms_VNet
 
     @tf.function
     def call(self, input):
@@ -118,20 +120,27 @@ class QNetwork(tf.keras.layers.Layer):
 
             if self.layer_norm:
                 h = self.layer_norms[i](h)
-        
-        # q_out = self.layer_out(h)
-        action_scores = self.layer_out(h)   # A; expected advantage function value
+        action_scores = self.layer_out(h)
 
         # TODO : Implement Dueling Network Here
         if self.dueling:
-            state_scores = self.sv_net(input)
+            # Value Network
+            h = self.layers[0](input)
+
+            if self.layer_norm:
+                h = self.layer_norms[0](h)
+
+            state_scores = self.layer_out(h)
+
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
 
             q_out = state_scores - action_scores_centered
         else:
             q_out = action_scores
+
         return q_out
+
 
 class FeedForwardPolicy(DQNPolicy):
     def __init__(self, ob_space, ac_space, n_env, n_steps, n_batch, name='q', reuse=False, layers=None,
