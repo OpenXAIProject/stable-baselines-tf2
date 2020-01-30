@@ -81,8 +81,7 @@ class QNetwork(tf.keras.layers.Layer):
         if self.dueling:
             self.layer_norms_VNet = []
             self.layer_VNet = []
-            self.layer_VNet.append(tf.keras.layers.Dense(layers[0], name='v/l1', activation=activation,
-                                                    input_shape=(n_batch,) + obs_shape))
+            self.layer_VNet.append(tf.keras.layers.Dense(layers[0], name='v/l1', activation=activation, input_shape=(n_batch,) + obs_shape))
 
             if self.layer_norm:
                 self.layer_norms_VNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
