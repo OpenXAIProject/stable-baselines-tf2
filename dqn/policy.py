@@ -81,13 +81,14 @@ class QNetwork(tf.keras.layers.Layer):
         if self.dueling:
             self.layer_norms_VNet = []
             self.layer_VNet = []
-            self.layer_VNet.append(tf.keras.layers.Dense(layers[0], name='v/l1', activation=activation, input_shape=(n_batch,) + obs_shape))
-
+            self.layer_VNet.append(tf.keras.layers.Dense(layers[0], name=name+'/v/l1', activation=activation,
+                                                         input_shape=(n_batch,) + obs_shape))
             if self.layer_norm:
                 self.layer_norms_VNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
 
-            self.layer_out_VNet = tf.keras.layers.Dense(n_action, name='v/out')
-            self.trainable_layers = self.trainable_layers + self.layer_VNet + [self.layer_out_VNet] + self.layer_norms_VNet
+            self.layer_out_VNet = tf.keras.layers.Dense(n_action, name=name+'/v/out')
+            self.trainable_layers = self.trainable_layers + self.layer_VNet + [self.layer_out_VNet]\
+                                     + self.layer_norms_VNet
 
     @tf.function
     def call(self, input):
@@ -102,10 +103,10 @@ class QNetwork(tf.keras.layers.Layer):
         # TODO : Implement Dueling Network Here
         if self.dueling:
             # Value Network
-            h = self.layers[0](input)
+            h = self.layer_VNet[0](input)
 
             if self.layer_norm:
-                h = self.layer_norms[0](h)
+                h = self.layer_norms_VNet[0](h)
 
             state_scores = self.layer_out(h)
 
