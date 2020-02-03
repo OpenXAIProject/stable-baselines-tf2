@@ -108,7 +108,7 @@ class QNetwork(tf.keras.layers.Layer):
             if self.layer_norm:
                 h = self.layer_norms_VNet[0](h)
 
-            state_scores = self.layer_out(h)
+            state_scores = self.layer_out_VNet(h)
 
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
