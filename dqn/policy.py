@@ -4,6 +4,7 @@ import numpy as np
 from gym.spaces import Discrete
 from base.policy import BasePolicy
 
+
 class DQNPolicy(BasePolicy):
     """
     Policy object that implements a DQN policy
@@ -55,32 +56,47 @@ class DQNPolicy(BasePolicy):
 
 
 class QNetwork(tf.keras.layers.Layer):
-    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):        
-        # name == q or target_q
-
+    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):
         self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
         self.layer_norms = []
 
-        for i, layersize in enumerate(layers):  # i = 0, 1S
-            # print("i: ", i)
-            # print("layer_size: ", layersize)
-            if i == 0:  # State?
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
+        for i, layersize in enumerate(layers):
+            if i == 0:
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l1',
                                               activation=activation, input_shape=(n_batch,) + obs_shape)
 
-            else:       # Action?
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1), 
+            else:
+                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
                                               activation=activation)
 
             self.layers.append(layer)
-        
-            if self.layer_norm:
-                self.layer_norms.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
 
-        self.layer_out = tf.keras.layers.Dense(n_action, name=name+'/out')
-        self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms 
+            if self.layer_norm:
+                self.layer_norms_QNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+        self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
+        self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms
+
+        if self.dueling:
+            self.layer_norms_VNet = []
+            self.layers_VNet = []
+
+            for i, layersize in enumerate(layers):
+                if i == 0:
+                    layer = tf.keras.layers.Dense(layersize, name=name+'/v/l1', activation=activation,
+                                                         input_shape=(n_batch,) + obs_shape)
+                else:
+                    layer = tf.keras.layers.Dense(layersize, name=name + '/v/l%d' % (i+1), activation=activation)
+
+                self.layers_VNet.append(layer)
+
+                if self.layer_norm:
+                    self.layer_norms_VNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+
+            self.layer_out_VNet = tf.keras.layers.Dense(n_action, name=name+'/v/out')
+            self.trainable_layers = self.trainable_layers \
+                                    + self.layers_VNet + [self.layer_out_VNet] + self.layer_norms_VNet
 
     @tf.function
     def call(self, input):
@@ -89,24 +105,26 @@ class QNetwork(tf.keras.layers.Layer):
             h = layer(h)
             if self.layer_norm:
                 h = self.layer_norms[i](h)
-        
-        # q_out = self.layer_out(h)
-        action_scores = self.layer_out(h)   # A; expected advantage function value
+        action_scores = self.layer_out(h)
 
         # TODO : Implement Dueling Network Here
         if self.dueling:
+            # Value Network
             h = input
-            layer_state = self.layers[0]
-            h = layer_state(h)
-            if self.layer_norm:
-                h = self.layer_norms[0](h)
-            state_scores = self.layer_out(h)
+            for i, layer in enumerate(self.layers_VNet):
+                h = layer(h)
+                if self.layer_norm:
+                    h = self.layer_norms_VNet[i](h)
+
+            state_scores = self.layer_out_VNet(h)
+
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
 
             q_out = state_scores - action_scores_centered
         else:
             q_out = action_scores
+
         return q_out
 
 
