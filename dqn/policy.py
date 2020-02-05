@@ -94,7 +94,7 @@ class QNetwork(tf.keras.layers.Layer):
                 if self.layer_norm:
                     self.layer_norms_VNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
 
-            self.layer_out_VNet = tf.keras.layers.Dense(n_action, name=name+'/v/out')
+            self.layer_out_VNet = tf.keras.layers.Dense(1, name=name+'/v/out')
             self.trainable_layers = self.trainable_layers \
                                     + self.layers_VNet + [self.layer_out_VNet] + self.layer_norms_VNet
 
@@ -121,7 +121,7 @@ class QNetwork(tf.keras.layers.Layer):
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
 
-            q_out = state_scores - action_scores_centered
+            q_out = state_scores + action_scores_centered
         else:
             q_out = action_scores
 

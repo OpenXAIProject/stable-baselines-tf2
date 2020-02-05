@@ -20,9 +20,9 @@ def main(args):
         buffer_size=50000,
         double_q=True,
         prioritized_replay=True,
+        dueling=True,
         exploration_fraction=0.2,
-        exploration_final_eps=0.01,
-        dueling=False
+        exploration_final_eps=0.02        
     )
     # model.load(load_path='cartpole_model.zip')
     model.learn(total_timesteps=args.max_timesteps)
