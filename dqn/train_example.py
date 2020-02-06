@@ -18,11 +18,12 @@ def main(args):
         policy_class=MlpPolicy,
         learning_rate=5e-4,
         buffer_size=50000,
-        double_q=True,
+        double_q=False,
         prioritized_replay=True,
         dueling=True,
         exploration_fraction=0.2,
-        exploration_final_eps=0.02        
+        exploration_final_eps=0.02,
+        model_path='cartpole_model.zip'
     )
     # model.load(load_path='cartpole_model.zip')
     model.learn(total_timesteps=args.max_timesteps)
