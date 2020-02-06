@@ -20,8 +20,11 @@ class DQN(ValueBasedRLAlgorithm):
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,    
                  prioritized_replay_alpha=0.6, prioritized_replay_beta0=0.4, prioritized_replay_beta_iters=None,
                  prioritized_replay_eps=1e-6, _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
-                 dueling=False):
-        
+                 dueling=False,
+                 model_path='~/params/'):
+
+        #Create an instance for save and load path
+        self.model_path = model_path
         # Create an instance of DQNPolicy (obs_space, act_space, n_env, n_steps, n_batch, name)
         self.env = env        
         self.observation_space = self.env.observation_space        
@@ -138,6 +141,8 @@ class DQN(ValueBasedRLAlgorithm):
         episode_rewards = [0.0]
         episode_successes = []
 
+        saved_mean_rewards = None
+
         obs = self.env.reset()
         error = 0
         
@@ -166,8 +171,9 @@ class DQN(ValueBasedRLAlgorithm):
 
             if can_sample and self.num_timesteps > self.learning_starts:
                 if self.num_timesteps % self.train_freq == 0:
-                    
-                    # Minimize the error in Bellman's equation on a batch sampled from replay buffer.                    
+                    # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
+
+                    # Sample a batch from the replay buffer
                     if self.prioritized_replay:
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = \
                             self.replay_buffer.sample(self.batch_size,
@@ -178,6 +184,7 @@ class DQN(ValueBasedRLAlgorithm):
                         weights = np.ones_like(rewards)
                         batch_idxes = None
 
+                    # Minimize the error in Bellman's equation on the sampled batch
                     td_errors, error = self.train(obses_t, actions, rewards, obses_tp1, dones, weights)                                                
 
                 if self.num_timesteps % self.target_network_update_freq == 0:
@@ -200,9 +207,17 @@ class DQN(ValueBasedRLAlgorithm):
                 print("- episodes : ", num_episodes)
                 print("- mean 100 episode reward : %.4f" % mean_100ep_reward)
                 print("- recent mean TD error : %.4f" % error)                
-                print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))           
+                print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))
+
+                # Save if mean_100ep_reward is lager than the past best result
+                if saved_mean_rewards < mean_100ep_reward:
+                    self.save(self.model_path)
+                    self.model_saved = True
+                    saved_mean_rewards = mean_100ep_reward
 
             self.num_timesteps += 1
+            if self.model_saved:
+                self.load(self.model_path)
 
         return self        
 
@@ -246,7 +261,7 @@ class DQN(ValueBasedRLAlgorithm):
     def get_parameter_list(self):
         return self.params    
 
-    def save(self, save_path, cloudpickle=False):
+    def save(self, model_path, cloudpickle=False):
         # params
         data = {
             "double_q": self.double_q,            
@@ -265,7 +280,7 @@ class DQN(ValueBasedRLAlgorithm):
 
         params_to_save = self.get_parameters()
 
-        self._save_to_file(save_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
+        self._save_to_file(model_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
 
-    def load(self):
+    def load(self, load_path):
         pass
