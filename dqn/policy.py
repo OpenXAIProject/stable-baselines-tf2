@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 from gym.spaces import Discrete
-from base.policy import BasePolicy
+from base.policy import BasePolicy, nature_cnn
 
 
 class DQNPolicy(BasePolicy):
@@ -56,11 +56,14 @@ class DQNPolicy(BasePolicy):
 
 
 class QNetwork(tf.keras.layers.Layer):
-    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu'):
+    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu',
+                 cnn_extractor=nature_cnn, feature_extraction="cnn"):
         self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
         self.layer_norms = []
+        self.cnn_extractor = cnn_extractor
+        self.feature_extraction = feature_extraction
 
         for i, layersize in enumerate(layers):
             if i == 0:
@@ -100,23 +103,29 @@ class QNetwork(tf.keras.layers.Layer):
 
     @tf.function
     def call(self, input):
-        h = input
-        for i, layer in enumerate(self.layers):
-            h = layer(h)
-            if self.layer_norm:
-                h = self.layer_norms[i](h)
-        action_scores = self.layer_out(h)
+        if self.feature_extraction == "cnn":
+            action_scores = self.cnn_extractor(input)    # TODO: Implement cnn_extractor(obs, type)
+        else:
+            h = input
+            for i, layer in enumerate(self.layers):
+                h = layer(h)
+                if self.layer_norm:
+                    h = self.layer_norms[i](h)
+            action_scores = self.layer_out(h)
 
         # TODO : Implement Dueling Network Here
         if self.dueling:
             # Value Network
-            h = input
-            for i, layer in enumerate(self.layers_VNet):
-                h = layer(h)
-                if self.layer_norm:
-                    h = self.layer_norms_VNet[i](h)
+            if self.feature_extraction == "cnn":
+                state_scores = self.cnn_extractor(input)
+            else:
+                h = input
+                for i, layer in enumerate(self.layers_VNet):
+                    h = layer(h)
+                    if self.layer_norm:
+                        h = self.layer_norms_VNet[i](h)
 
-            state_scores = self.layer_out_VNet(h)
+                state_scores = self.layer_out_VNet(h)
 
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
@@ -130,6 +139,7 @@ class QNetwork(tf.keras.layers.Layer):
 
 class FeedForwardPolicy(DQNPolicy):
     def __init__(self, ob_space, ac_space, n_env, n_steps, n_batch, name='q', reuse=False, layers=None,
+                 cnn_extractor=nature_cnn, feature_extraction="mlp",
                  layer_norm=False, dueling=False, act_fun=tf.nn.relu, **kwargs):
         super(FeedForwardPolicy, self).__init__(ob_space, ac_space, n_env, n_steps,
                                                 n_batch, dueling=dueling, reuse=reuse)
@@ -140,7 +150,8 @@ class FeedForwardPolicy(DQNPolicy):
         self.kwargs = kwargs
         self.layer_norm = layer_norm
         self.activation_function = act_fun
-        self.qnet = QNetwork(layers, self.ob_space.shape, self.n_actions, name, layer_norm, dueling, n_batch)
+        self.qnet = QNetwork(layers, self.ob_space.shape, self.n_actions, name, layer_norm, dueling, n_batch,
+                             self.activation_function, cnn_extractor, feature_extraction)
 
     @tf.function
     def q_value(self, obs):
@@ -167,6 +178,28 @@ class FeedForwardPolicy(DQNPolicy):
 
     def proba_step(self, obs, state=None, mask=None):        
         return self.policy_proba(obs)
+
+
+class CnnPolicy(FeedForwardPolicy):
+    """
+    Policy object that implements DQN policy, using a CNN (the nature CNN)
+    :param ob_space: (Gym Space) The observation space of the environment
+    :param ac_space: (Gym Space) The action space of the environment
+    :param n_env: (int) The number of environments to run
+    :param n_steps: (int) The number of steps to run for each environment
+    :param n_batch: (int) The number of batch to run (n_envs * n_steps)
+    :param reuse: (bool) If the policy is reusable or not
+    :param obs_phs: (TensorFlow Tensor, TensorFlow Tensor) a tuple containing an override for observation placeholder
+        and the processed observation placeholder respectively
+    :param dueling: (bool) if true double the output MLP to compute a baseline for action scores
+    :param _kwargs: (dict) Extra keyword arguments for the nature CNN feature extraction
+    """
+
+    def __init__(self, ob_space, ac_space, n_env, n_steps, n_batch, name='q',
+                 reuse=False, dueling=True, **_kwargs):
+        super(CnnPolicy, self).__init__(ob_space, ac_space, n_env, n_steps, n_batch, name, reuse,
+                                        feature_extraction="cnn", dueling=dueling,
+                                        layer_norm=False, **_kwargs)
 
 
 class MlpPolicy(FeedForwardPolicy):

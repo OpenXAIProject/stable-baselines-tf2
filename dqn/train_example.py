@@ -3,7 +3,7 @@ import argparse
 import gym
 
 from dqn import DQN
-from policy import MlpPolicy
+from policy import MlpPolicy, CnnPolicy
 
 def main(args):
     """
@@ -23,9 +23,9 @@ def main(args):
         dueling=True,
         exploration_fraction=0.2,
         exploration_final_eps=0.02,
-        model_path='cartpole_model.zip'
+        model_path='cartpole_model'
     )
-    model.load(load_path='cartpole_model.zip')
+    # model.load(load_path='cartpole_model')
     model.learn(total_timesteps=args.max_timesteps)
 
     print("\nFinished")
