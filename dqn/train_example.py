@@ -15,7 +15,7 @@ def main(args):
 
     model = DQN(
         env=env,
-        policy_class=MlpPolicy,
+        policy_class=CnnPolicy,
         learning_rate=5e-4,
         buffer_size=50000,
         double_q=False,

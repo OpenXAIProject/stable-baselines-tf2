@@ -104,28 +104,26 @@ class QNetwork(tf.keras.layers.Layer):
     @tf.function
     def call(self, input):
         if self.feature_extraction == "cnn":
-            action_scores = self.cnn_extractor(input)    # TODO: Implement cnn_extractor(obs, type)
+            h = self.cnn_extractor(input)    # TODO: Implement "new" cnn_extractor
         else:
             h = input
             for i, layer in enumerate(self.layers):
                 h = layer(h)
                 if self.layer_norm:
                     h = self.layer_norms[i](h)
-            action_scores = self.layer_out(h)
+
+        action_scores = self.layer_out(h)
 
         # TODO : Implement Dueling Network Here
         if self.dueling:
             # Value Network
-            if self.feature_extraction == "cnn":
-                state_scores = self.cnn_extractor(input)
-            else:
-                h = input
-                for i, layer in enumerate(self.layers_VNet):
-                    h = layer(h)
-                    if self.layer_norm:
-                        h = self.layer_norms_VNet[i](h)
+            h = input
+            for i, layer in enumerate(self.layers_VNet):
+                h = layer(h)
+                if self.layer_norm:
+                    h = self.layer_norms_VNet[i](h)
 
-                state_scores = self.layer_out_VNet(h)
+            state_scores = self.layer_out_VNet(h)
 
             action_scores_mean = tf.reduce_mean(action_scores, axis=1)
             action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
