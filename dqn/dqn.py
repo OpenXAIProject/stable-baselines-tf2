@@ -15,6 +15,7 @@ import gym
 
 # For Save/Load
 import os
+import pickle
 import cloudpickle
 import json
 import zipfile
@@ -222,14 +223,10 @@ class DQN(ValueBasedRLAlgorithm):
                 # Save if mean_100ep_reward is lager than the past best result
                 if saved_mean_rewards == None or saved_mean_rewards < mean_100ep_reward:
                     self.save(self.model_path)
-                    if model_saved:
-                        print("previous best case: ", saved_mean_rewards)
-                        print("best case         : ", mean_100ep_reward)
                     model_saved = True
                     saved_mean_rewards = mean_100ep_reward
-                else:
-                    if model_saved:
-                        print("best case: ", saved_mean_rewards)
+                if model_saved:
+                    print("best case: ", saved_mean_rewards)
 
             self.num_timesteps += 1
 
@@ -266,208 +263,82 @@ class DQN(ValueBasedRLAlgorithm):
 
     def get_parameters(self):
         parameters = []
-        weights = self.qfunc_layers.trainable_variables
-        for idx, variable in enumerate(self.qfunc_layers.trainable_variables):
+        weights = []
+        for layer in self.params:
+            weights.append(layer.get_weights())
+
+        weights = np.array(weights)
+        weights = weights.reshape(np.shape(self.params.trainable_variables))
+
+        for idx, variable in enumerate(self.params.trainable_variables):
             weight = weights[idx]
             parameters.append((variable.name, weight))
         return parameters
 
     def get_parameter_list(self):
-        return self.params    
+        return self.params
 
-    def save(self, model_path, cloudpickle=True):
+    def save(self, save_path, cloudpickle=True):
         # params
-        data = {
-            "double_q": self.double_q,            
-            "learning_starts": self.learning_starts,
-            "train_freq": self.train_freq,            
-            "batch_size": self.batch_size,
-            "target_network_update_freq": self.target_network_update_freq,            
-            "exploration_final_eps": self.exploration_final_eps,
-            "exploration_fraction": self.exploration_fraction,
-            "learning_rate": self.learning_rate,
-            "gamma": self.gamma,            
-            "observation_space": self.observation_space,
-            "action_space": self.action_space,
-            "policy": self.policy,                       
-        }
+        # data = {
+        #     "double_q": self.double_q,
+        #     "learning_starts": self.learning_starts,
+        #     "train_freq": self.train_freq,
+        #     "batch_size": self.batch_size,
+        #     "target_network_update_freq": self.target_network_update_freq,
+        #     "exploration_final_eps": self.exploration_final_eps,
+        #     "exploration_fraction": self.exploration_fraction,
+        #     "learning_rate": self.learning_rate,
+        #     "gamma": self.gamma,
+        #     "observation_space": self.observation_space,
+        #     "action_space": self.action_space,
+        #     "policy": self.policy
+        #     "parameters"
+        # }
 
-        params_to_save = self.get_parameters()
+        data = self.get_parameters()
 
-        self.save_to_file(model_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
-
-    def save_to_file(self, save_path, data, params, cloudpickle):
-        """Save model to a zip archive or cloudpickle file.
-                :param save_path: (str or file-like) Where to store the model
-                :param data: (OrderedDict) Class parameters being stored
-                :param params: (OrderedDict) Model parameters being stored
-                :param cloudpickle: (bool) Use old cloudpickle format
-                    (stable-baselines<=2.7.0) instead of a zip archive.
-                """
-        if cloudpickle:
-            self.save_to_file_cloudpickle(save_path, data, params)
-        else:
-            self.save_to_file_zip(save_path, data, params)
-
-    def save_to_file_cloudpickle(self, save_path, data=None, params=None):
-        """Legacy code for saving models with cloudpickle
-        :param save_path: (str or file-like) Where to store the model
-        :param data: (OrderedDict) Class parameters being stored
-        :param params: (OrderedDict) Model parameters being stored
-        """
+        # self._save_to_file(model_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
         if isinstance(save_path, str):
             _, ext = os.path.splitext(save_path)
             if ext == "":
                 save_path += ".pkl"
+        with open(save_path, 'wb') as f:
+            pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
-            with open(save_path, "wb") as file_:
-                cloudpickle.dump((data, params), file_)
-        else:
-            # Here save_path is a file-like object, not a path
-            cloudpickle.dump((data, params), save_path)
-
-    def save_to_file_zip(self, save_path, data=None, params=None):
-        """Save model to a .zip archive
-        :param save_path: (str or file-like) Where to store the model
-        :param data: (OrderedDict) Class parameters being stored
-        :param params: (OrderedDict) Model parameters being stored
-        """
-        # data/params can be None, so do not
-        # try to serialize them blindly
-        if data is not None:
-            serialized_data = data_to_json(data)
-        if params is not None:
-            serialized_params = params_to_bytes(params)
-            # We also have to store list of the parameters
-            # to store the ordering for OrderedDict.
-            # We can trust these to be strings as they
-            # are taken from the Tensorflow graph.
-            serialized_param_list = json.dumps(
-                list(params.keys()),
-                indent=4
-            )
-
-        # Check postfix if save_path is a string
-        if isinstance(save_path, str):
-            _, ext = os.path.splitext(save_path)
-            if ext == "":
-                save_path += ".zip"
-
-        # Create a zip-archive and write our objects
-        # there. This works when save_path
-        # is either str or a file-like
-        with zipfile.ZipFile(save_path, "w") as file_:
-            # Do not try to save "None" elements
-            if data is not None:
-                file_.writestr("data", serialized_data)
-            if params is not None:
-                file_.writestr("parameters", serialized_params)
-                file_.writestr("parameter_list", serialized_param_list)
+    def load_parameters(self, parameters, exact_match=False):
+        assert len(parameters) == len(self.params.weights)
+        weights = []
+        for variable, parameter in zip(self.params.weights, parameters):
+            name, value = parameter
+            if exact_match:
+                assert name == variable.name
+            weights.append(value)
+        # print(weights)
+        for i in range(len(self.params)):
+            self.params[i].set_weights(weights[i])
+        # self.qfunc_layers.set_weights(weights)
 
     def load(self, load_path, cloudpickle=True):
-        data, params = self.load_from_file(load_path, cloudpickle)
+        # Parameter cloudpickle does not work now
 
-        self.double_q = data["double_q"]
-        self.learning_starts = data["learning_starts"]
-        self.train_freq = data["train_freq"]
-        self.batch_size = data["batch_size"]
-        self.target_network_update_freq = data["target_network_update_freq"]
-        self.exploration_final_eps = data["exploration_final_eps"]
-        self.exploration_fraction = data["exploration_fraction"]
-        self.learning_rate = data["learning_rate"]
-        self.gamma = data["gamma"]
-        self.observation_space = data["observation_space"]
-        self.action_space = data["action_space"]
-        self.policy = data["policy"]
-
-        # loadable_parameters = self.get_parameter_list()
-
-    def load_from_file(self, load_path, cloudpickle):
-        if cloudpickle:
-            data, params = self.load_from_file_cloudpickle(load_path)
-        # else:
-        #     data, params = self.load_from_file(load_path)
-
-        return data, params
-
-    def load_from_file_cloudpickle(self, load_path):
-        """Legacy code for loading older models stored with cloudpickle
-        :param load_path: (str or file-like) where from to load the file
-        :return: (dict, OrderedDict) Class parameters and model parameters
-        """
         if isinstance(load_path, str):
-            if not os.path.exists(load_path):
-                if os.path.exists(load_path + ".pkl"):
-                    load_path += ".pkl"
-                else:
-                    raise ValueError("Error: the file {} could not be found".format(load_path))
+            _, ext = os.path.splitext(load_path)
+            if ext == "":
+                load_path += ".pkl"
+        with open(load_path, 'rb') as f:
+            data = pickle.load(f)
+        self.load_parameters(data)
 
-            with open(load_path, "rb") as file_:
-                data, params = cloudpickle.load(file_)
-        else:
-            # Here load_path is a file-like object, not a path
-            data, params = cloudpickle.load(load_path)
-
-        return data, params
-
-    def load_from_file_zip(load_path, load_data=True, custom_objects=None):
-        pass
-    #     """Load model data from a .zip archive
-    #     :param load_path: (str or file-like) Where to load model from
-    #     :param load_data: (bool) Whether we should load and return data
-    #         (class parameters). Mainly used by `load_parameters` to
-    #         only load model parameters (weights).
-    #     :param custom_objects: (dict) Dictionary of objects to replace
-    #         upon loading. If a variable is present in this dictionary as a
-    #         key, it will not be deserialized and the corresponding item
-    #         will be used instead. Similar to custom_objects in
-    #         `keras.models.load_model`. Useful when you have an object in
-    #         file that can not be deserialized.
-    #     :return: (dict, OrderedDict) Class parameters and model parameters
-    #     """
-    #     # Check if file exists if load_path is
-    #     # a string
-    #     if isinstance(load_path, str):
-    #         if not os.path.exists(load_path):
-    #             if os.path.exists(load_path + ".zip"):
-    #                 load_path += ".zip"
-    #             else:
-    #                 raise ValueError("Error: the file {} could not be found".format(load_path))
-    #
-    #     # Open the zip archive and load data.
-    #     try:
-    #         with zipfile.ZipFile(load_path, "r") as file_:
-    #             namelist = file_.namelist()
-    #             # If data or parameters is not in the
-    #             # zip archive, assume they were stored
-    #             # as None (_save_to_file allows this).
-    #             data = None
-    #             params = None
-    #             if "data" in namelist and load_data:
-    #                 # Load class parameters and convert to string
-    #                 # (Required for json library in Python 3.5)
-    #                 json_data = file_.read("data").decode()
-    #                 data = json_to_data(json_data, custom_objects=custom_objects)
-    #
-    #             if "parameters" in namelist:
-    #                 # Load parameter list and and parameters
-    #                 parameter_list_json = file_.read("parameter_list").decode()
-    #                 parameter_list = json.loads(parameter_list_json)
-    #                 serialized_params = file_.read("parameters")
-    #                 params = bytes_to_params(
-    #                     serialized_params, parameter_list
-    #                 )
-    #     except zipfile.BadZipFile:
-    #         # load_path wasn't a zip file. Possibly a cloudpickle
-    #         # file. Show a warning and fall back to loading cloudpickle.
-    #         warnings.warn("It appears you are loading from a file with old format. " +
-    #                       "Older cloudpickle format has been replaced with zip-archived " +
-    #                       "models. Consider saving the model with new format.",
-    #                       DeprecationWarning)
-    #         # Attempt loading with the cloudpickle format.
-    #         # If load_path is file-like, seek back to beginning of file
-    #         if not isinstance(load_path, str):
-    #             load_path.seek(0)
-    #         data, params = BaseRLModel._load_from_file_cloudpickle(load_path)
-    #
-    #     return data, params
+        # self.double_q = data["double_q"]
+        # self.learning_starts = data["learning_starts"]
+        # self.train_freq = data["train_freq"]
+        # self.batch_size = data["batch_size"]
+        # self.target_network_update_freq = data["target_network_update_freq"]
+        # self.exploration_final_eps = data["exploration_final_eps"]
+        # self.exploration_fraction = data["exploration_fraction"]
+        # self.learning_rate = data["learning_rate"]
+        # self.gamma = data["gamma"]
+        # self.observation_space = data["observation_space"]
+        # self.action_space = data["action_space"]
+        # self.policy = data["policy"]
