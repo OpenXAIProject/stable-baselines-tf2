@@ -24,7 +24,7 @@ class DQN(ValueBasedRLAlgorithm):
         
         # Create an instance of DQNPolicy (obs_space, act_space, n_env, n_steps, n_batch, name)
         self.env = env        
-        self.observation_space = self.env.observation_space        
+        self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
         self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q', dueling=dueling)
         self.q_function = self.policy.qnet.call                # Q-Function : obs -> action-dim vector        
