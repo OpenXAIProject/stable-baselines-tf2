@@ -95,11 +95,11 @@ class BaseRLAlgorithm(ABC):
         print("* Evaluating...")
         for i in range(num_epsiodes):
             done = False
-            obs = self.test_env.reset()
+            obs = self.env.reset()
             ret = 0
             while not done:
                 action = self.predict(np.array([obs]), deterministic=deterministic)[0]
-                obs, rew, done, _ = self.test_env.step(action)
+                obs, rew, done, _ = self.env.step(action)
                 ret += rew
             print("- Episode %3d : %6.3f" % (i+1, ret))
             episode_returns.append(ret)

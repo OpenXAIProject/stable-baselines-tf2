@@ -11,13 +11,13 @@ def main(args):
 
     :param args: (ArgumentParser) the input arguments
     """
-    env = gym.make("CartPole-v0")
+    env = gym.make("Pong-v0")
 
     model = DQN(
         env=env,
-        policy_class=MlpPolicy,
+        policy_class=CnnPolicy,
         learning_rate=1e-3,
-        buffer_size=100000,
+        buffer_size=50000,
         double_q=False,
         prioritized_replay=True,
         dueling=False,
@@ -25,13 +25,12 @@ def main(args):
         exploration_final_eps=0.02,
         model_path='cartpole_model'
     )
-
     model.learn(total_timesteps=args.max_timesteps)
-    print("\nTrain Finished")
-
-    model.load("cartpole_model")
-    model.learn(total_timesteps=100000)
+    model.save("cartpole_cnn_model")
+    # model.load("cartpole_cnn_model")
+    # model.evaluate(num_epsiodes=5)
     print("\nFinished")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train DQN on cartpole")

@@ -35,7 +35,7 @@ class DQN(ValueBasedRLAlgorithm):
         #Create an instance for save and load path
         self.model_path = model_path
         # Create an instance of DQNPolicy (obs_space, act_space, n_env, n_steps, n_batch, name)
-        self.env = env        
+        self.env = env
         self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
         self.policy = policy_class(self.observation_space, self.action_space, 1, 1, None, 'q', dueling=dueling)
@@ -118,6 +118,14 @@ class DQN(ValueBasedRLAlgorithm):
         self.optimizer.apply_gradients(zip(grads, self.qfunc_layers.trainable_variables))
 
         return td_error, weighted_error
+
+    @tf.function
+    def initialize_variables(self):
+        zero_like_state = tf.zeros((1,) + self.observation_space.shape)
+        self.q_function(zero_like_state)
+        self.target_q_function(zero_like_state)
+        if self.double_q:
+            self.double_q_function(zero_like_state)
         
     def update_target(self):
         for var, var_target in zip(self.qfunc_layers, self.target_qfunc_layers):
@@ -321,6 +329,7 @@ class DQN(ValueBasedRLAlgorithm):
 
     def load(self, load_path, cloudpickle=True):
         # Parameter cloudpickle does not work now
+        self.initialize_variables()
 
         if isinstance(load_path, str):
             _, ext = os.path.splitext(load_path)

@@ -8,3 +8,4 @@ __pycache__
 results/*
 results_final/*
 train.sh
+*.pkl
