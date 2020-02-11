@@ -2,7 +2,8 @@ import tensorflow as tf
 import numpy as np
 
 from gym.spaces import Discrete
-from base.policy import BasePolicy, nature_cnn
+from base.policy import BasePolicy
+from common.tf_util import conv, conv_to_fc, linear
 
 
 class DQNPolicy(BasePolicy):
@@ -54,16 +55,33 @@ class DQNPolicy(BasePolicy):
         """
         raise NotImplementedError
 
+def nature_cnn_edited(scaled_images, activation, **kwargs):
+    try:
+        if not activation.isalpha():
+            activ = activation
+        else:
+            activ = eval("tf.keras.activations." + str(activation))
+    except AttributeError:
+        # print("There is no such activation function")
+        activ = tf.nn.relu
+
+    layer_1 = activ(conv(scaled_images, 'c1', n_filters=32, filter_size=8, stride=4, init_scale=np.sqrt(2), **kwargs))
+    layer_2 = activ(conv(layer_1, 'c2', n_filters=64, filter_size=4, stride=2, init_scale=np.sqrt(2), **kwargs))
+    layer_3 = activ(conv(layer_2, 'c3', n_filters=64, filter_size=3, stride=1, init_scale=np.sqrt(2), **kwargs))
+    layer_3 = conv_to_fc(layer_3)
+    return activ(linear(layer_3, 'fc1', n_hidden=512, init_scale=np.sqrt(2)))
+
 
 class QNetwork(tf.keras.layers.Layer):
     def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu',
-                 cnn_extractor=nature_cnn, feature_extraction="cnn"):
+                 cnn_extractor=nature_cnn_edited, feature_extraction="cnn"):
         self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
         self.layer_norms = []
         self.cnn_extractor = cnn_extractor
         self.feature_extraction = feature_extraction
+        self.activation = activation
 
         for i, layersize in enumerate(layers):
             if i == 0:
@@ -103,8 +121,9 @@ class QNetwork(tf.keras.layers.Layer):
 
     @tf.function
     def call(self, input):
+        print(np.shape(input))
         if self.feature_extraction == "cnn":
-            h = self.cnn_extractor(input)    # TODO: Implement "new" cnn_extractor
+            h = self.cnn_extractor(input, self.activation)    # TODO: Implement "new" cnn_extractor
         else:
             h = input
             for i, layer in enumerate(self.layers):
@@ -137,7 +156,7 @@ class QNetwork(tf.keras.layers.Layer):
 
 class FeedForwardPolicy(DQNPolicy):
     def __init__(self, ob_space, ac_space, n_env, n_steps, n_batch, name='q', reuse=False, layers=None,
-                 cnn_extractor=nature_cnn, feature_extraction="mlp",
+                 cnn_extractor=nature_cnn_edited, feature_extraction="mlp",
                  layer_norm=False, dueling=False, act_fun=tf.nn.relu, **kwargs):
         super(FeedForwardPolicy, self).__init__(ob_space, ac_space, n_env, n_steps,
                                                 n_batch, dueling=dueling, reuse=reuse)
