@@ -13,6 +13,15 @@ from base.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 import copy
 import gym
 
+# For Save/Load
+import os
+import pickle
+import cloudpickle
+import json
+import zipfile
+from common.save_util import params_to_bytes
+from common.save_util import data_to_json
+
 
 class DQN(ValueBasedRLAlgorithm):
     def __init__(self, policy_class, env, gamma=0.99, learning_rate=5e-4, buffer_size=50000, 
@@ -20,8 +29,11 @@ class DQN(ValueBasedRLAlgorithm):
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,    
                  prioritized_replay_alpha=0.6, prioritized_replay_beta0=0.4, prioritized_replay_beta_iters=None,
                  prioritized_replay_eps=1e-6, _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
-                 dueling=False):
-        
+                 dueling=False,
+                 model_path='~/params/'):
+
+        #Create an instance for save and load path
+        self.model_path = model_path
         # Create an instance of DQNPolicy (obs_space, act_space, n_env, n_steps, n_batch, name)
         self.env = env        
         self.observation_space = self.env.observation_space
@@ -53,7 +65,7 @@ class DQN(ValueBasedRLAlgorithm):
         self.batch_size = batch_size
         self.target_network_update_freq = target_network_update_freq        
         self.exploration_final_eps = exploration_final_eps
-        self.exploration_fraction = exploration_fraction        
+        self.exploration_fraction = exploration_fraction
         self.learning_rate = learning_rate
         self.gamma = gamma        
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
@@ -138,6 +150,9 @@ class DQN(ValueBasedRLAlgorithm):
         episode_rewards = [0.0]
         episode_successes = []
 
+        saved_mean_rewards = None
+        model_saved = False
+
         obs = self.env.reset()
         error = 0
         
@@ -166,8 +181,9 @@ class DQN(ValueBasedRLAlgorithm):
 
             if can_sample and self.num_timesteps > self.learning_starts:
                 if self.num_timesteps % self.train_freq == 0:
-                    
-                    # Minimize the error in Bellman's equation on a batch sampled from replay buffer.                    
+                    # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
+
+                    # Sample a batch from the replay buffer
                     if self.prioritized_replay:
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = \
                             self.replay_buffer.sample(self.batch_size,
@@ -178,6 +194,7 @@ class DQN(ValueBasedRLAlgorithm):
                         weights = np.ones_like(rewards)
                         batch_idxes = None
 
+                    # Minimize the error in Bellman's equation on the sampled batch
                     td_errors, error = self.train(obses_t, actions, rewards, obses_tp1, dones, weights)                                                
 
                 if self.num_timesteps % self.target_network_update_freq == 0:
@@ -195,16 +212,25 @@ class DQN(ValueBasedRLAlgorithm):
                 mean_100ep_reward = round(float(np.mean(episode_rewards[-101:-1])), 1)
 
             num_episodes = len(episode_rewards)
+
             if done and log_interval is not None and len(episode_rewards) % log_interval == 0:
                 print("- steps : ", self.num_timesteps)
                 print("- episodes : ", num_episodes)
                 print("- mean 100 episode reward : %.4f" % mean_100ep_reward)
                 print("- recent mean TD error : %.4f" % error)                
-                print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))           
+                print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))
+
+                # Save if mean_100ep_reward is lager than the past best result
+                if saved_mean_rewards == None or saved_mean_rewards < mean_100ep_reward:
+                    self.save(self.model_path)
+                    model_saved = True
+                    saved_mean_rewards = mean_100ep_reward
+                if model_saved:
+                    print("best case: ", saved_mean_rewards)
 
             self.num_timesteps += 1
 
-        return self        
+        return self
 
     def predict(self, observation, state=None, mask=None, deterministic=True):
         observation = np.array(observation)        
@@ -237,35 +263,82 @@ class DQN(ValueBasedRLAlgorithm):
 
     def get_parameters(self):
         parameters = []
-        weights = self.get_weights()
-        for idx, variable in enumerate(self.trainable_variables):
+        weights = []
+        for layer in self.params:
+            weights.append(layer.get_weights())
+
+        weights = np.array(weights)
+        weights = weights.reshape(np.shape(self.params.trainable_variables))
+
+        for idx, variable in enumerate(self.params.trainable_variables):
             weight = weights[idx]
             parameters.append((variable.name, weight))
         return parameters
 
     def get_parameter_list(self):
-        return self.params    
+        return self.params
 
-    def save(self, save_path, cloudpickle=False):
+    def save(self, save_path, cloudpickle=True):
         # params
-        data = {
-            "double_q": self.double_q,            
-            "learning_starts": self.learning_starts,
-            "train_freq": self.train_freq,            
-            "batch_size": self.batch_size,
-            "target_network_update_freq": self.target_network_update_freq,            
-            "exploration_final_eps": self.exploration_final_eps,
-            "exploration_fraction": self.exploration_fraction,
-            "learning_rate": self.learning_rate,
-            "gamma": self.gamma,            
-            "observation_space": self.observation_space,
-            "action_space": self.action_space,
-            "policy": self.policy,                       
-        }
+        # data = {
+        #     "double_q": self.double_q,
+        #     "learning_starts": self.learning_starts,
+        #     "train_freq": self.train_freq,
+        #     "batch_size": self.batch_size,
+        #     "target_network_update_freq": self.target_network_update_freq,
+        #     "exploration_final_eps": self.exploration_final_eps,
+        #     "exploration_fraction": self.exploration_fraction,
+        #     "learning_rate": self.learning_rate,
+        #     "gamma": self.gamma,
+        #     "observation_space": self.observation_space,
+        #     "action_space": self.action_space,
+        #     "policy": self.policy
+        #     "parameters"
+        # }
 
-        params_to_save = self.get_parameters()
+        data = self.get_parameters()
 
-        self._save_to_file(save_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
+        # self._save_to_file(model_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
+        if isinstance(save_path, str):
+            _, ext = os.path.splitext(save_path)
+            if ext == "":
+                save_path += ".pkl"
+        with open(save_path, 'wb') as f:
+            pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
-    def load(self):
-        pass
+    def load_parameters(self, parameters, exact_match=False):
+        assert len(parameters) == len(self.params.weights)
+        weights = []
+        for variable, parameter in zip(self.params.weights, parameters):
+            name, value = parameter
+            if exact_match:
+                assert name == variable.name
+            weights.append(value)
+        # print(weights)
+        for i in range(len(self.params)):
+            self.params[i].set_weights(weights[i])
+        # self.qfunc_layers.set_weights(weights)
+
+    def load(self, load_path, cloudpickle=True):
+        # Parameter cloudpickle does not work now
+
+        if isinstance(load_path, str):
+            _, ext = os.path.splitext(load_path)
+            if ext == "":
+                load_path += ".pkl"
+        with open(load_path, 'rb') as f:
+            data = pickle.load(f)
+        self.load_parameters(data)
+
+        # self.double_q = data["double_q"]
+        # self.learning_starts = data["learning_starts"]
+        # self.train_freq = data["train_freq"]
+        # self.batch_size = data["batch_size"]
+        # self.target_network_update_freq = data["target_network_update_freq"]
+        # self.exploration_final_eps = data["exploration_final_eps"]
+        # self.exploration_fraction = data["exploration_fraction"]
+        # self.learning_rate = data["learning_rate"]
+        # self.gamma = data["gamma"]
+        # self.observation_space = data["observation_space"]
+        # self.action_space = data["action_space"]
+        # self.policy = data["policy"]
