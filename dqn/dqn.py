@@ -77,6 +77,13 @@ class DQN(ValueBasedRLAlgorithm):
 
         self.qfunc_layers        = self.policy.qnet.trainable_layers
         self.target_qfunc_layers = self.target_policy.qnet.trainable_layers
+
+        if self.double_q:
+            self.double_q_function_layers = self.double_policy.qnet.trainable_layers
+        else:
+            self.double_q_function_layers = []
+
+        self.trainable_layers = self.qfunc_layers + self.target_qfunc_layers +  self.double_q_function_layers
         self.params              = self.qfunc_layers.trainable_variables + self.target_qfunc_layers.trainable_variables
 
         self.update_target()
@@ -122,6 +129,8 @@ class DQN(ValueBasedRLAlgorithm):
     @tf.function
     def initialize_variables(self):
         zero_like_state = tf.zeros((1,) + self.observation_space.shape)
+        print("init size: ", zero_like_state.shape)
+
         self.q_function(zero_like_state)
         self.target_q_function(zero_like_state)
         if self.double_q:
@@ -272,13 +281,13 @@ class DQN(ValueBasedRLAlgorithm):
     def get_parameters(self):
         parameters = []
         weights = []
-        for layer in self.params:
+        for layer in self.trainable_layers:
             weights.append(layer.get_weights())
 
         weights = np.array(weights)
-        weights = weights.reshape(np.shape(self.params.trainable_variables))
+        weights = weights.reshape(np.shape(self.trainable_layers.trainable_variables))
 
-        for idx, variable in enumerate(self.params.trainable_variables):
+        for idx, variable in enumerate(self.trainable_layers.trainable_variables):
             weight = weights[idx]
             parameters.append((variable.name, weight))
         return parameters
@@ -287,26 +296,7 @@ class DQN(ValueBasedRLAlgorithm):
         return self.params
 
     def save(self, save_path, cloudpickle=True):
-        # params
-        # data = {
-        #     "double_q": self.double_q,
-        #     "learning_starts": self.learning_starts,
-        #     "train_freq": self.train_freq,
-        #     "batch_size": self.batch_size,
-        #     "target_network_update_freq": self.target_network_update_freq,
-        #     "exploration_final_eps": self.exploration_final_eps,
-        #     "exploration_fraction": self.exploration_fraction,
-        #     "learning_rate": self.learning_rate,
-        #     "gamma": self.gamma,
-        #     "observation_space": self.observation_space,
-        #     "action_space": self.action_space,
-        #     "policy": self.policy
-        #     "parameters"
-        # }
-
         data = self.get_parameters()
-
-        # self._save_to_file(model_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
         if isinstance(save_path, str):
             _, ext = os.path.splitext(save_path)
             if ext == "":
@@ -315,22 +305,19 @@ class DQN(ValueBasedRLAlgorithm):
             pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
     def load_parameters(self, parameters, exact_match=False):
-        assert len(parameters) == len(self.params.weights)
+        assert len(parameters) == len(self.trainable_layers.weights)
         weights = []
-        for variable, parameter in zip(self.params.weights, parameters):
+        for variable, parameter in zip(self.trainable_layers.weights, parameters):
             name, value = parameter
             if exact_match:
                 assert name == variable.name
             weights.append(value)
-        # print(weights)
-        for i in range(len(self.params)):
-            self.params[i].set_weights(weights[i])
-        # self.qfunc_layers.set_weights(weights)
+        for i in range(len(self.trainable_layers)):
+            self.trainable_layers[i].set_weights((weights[2 * i], weights[2 * i + 1]))
 
     def load(self, load_path, cloudpickle=True):
         # Parameter cloudpickle does not work now
         self.initialize_variables()
-
         if isinstance(load_path, str):
             _, ext = os.path.splitext(load_path)
             if ext == "":
@@ -338,16 +325,3 @@ class DQN(ValueBasedRLAlgorithm):
         with open(load_path, 'rb') as f:
             data = pickle.load(f)
         self.load_parameters(data)
-
-        # self.double_q = data["double_q"]
-        # self.learning_starts = data["learning_starts"]
-        # self.train_freq = data["train_freq"]
-        # self.batch_size = data["batch_size"]
-        # self.target_network_update_freq = data["target_network_update_freq"]
-        # self.exploration_final_eps = data["exploration_final_eps"]
-        # self.exploration_fraction = data["exploration_fraction"]
-        # self.learning_rate = data["learning_rate"]
-        # self.gamma = data["gamma"]
-        # self.observation_space = data["observation_space"]
-        # self.action_space = data["action_space"]
-        # self.policy = data["policy"]
