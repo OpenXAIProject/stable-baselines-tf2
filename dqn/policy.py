@@ -75,6 +75,7 @@ def nature_cnn_edited(scaled_images, activation, **kwargs):
 class QNetwork(tf.keras.layers.Layer):
     def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu',
                  cnn_extractor=nature_cnn_edited, feature_extraction="cnn"):
+        super(QNetwork, self).__init__()
         self.layer_norm = layer_norm
         self.dueling = dueling
         self.layers = []
@@ -87,11 +88,12 @@ class QNetwork(tf.keras.layers.Layer):
             if i == 0:
                 layer = tf.keras.layers.Dense(layersize, name=name+'/l1',
                                               activation=activation, input_shape=(n_batch,) + obs_shape)
+                # print((n_batch,) + obs_shape)
 
             else:
                 layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
                                               activation=activation)
-
+            # print(layersize)
             self.layers.append(layer)
 
             if self.layer_norm:
@@ -121,7 +123,7 @@ class QNetwork(tf.keras.layers.Layer):
 
     @tf.function
     def call(self, input):
-        print(np.shape(input))
+        # print(input.shape)
         if self.feature_extraction == "cnn":
             h = self.cnn_extractor(input, self.activation)    # TODO: Implement "new" cnn_extractor
         else:
@@ -179,7 +181,8 @@ class FeedForwardPolicy(DQNPolicy):
     def step(self, obs, state=None, mask=None, deterministic=True):
         # q_values, actions_proba = self.sess.run([self.q_values, self.policy_proba], {self.obs_ph: obs})
         q_values = self.q_value(obs)
-        actions_proba = self.policy_proba(obs)
+        # actions_proba = self.policy_proba(obs)
+        actions_proba = tf.nn.softmax(q_values)
         if deterministic:
             actions = np.argmax(q_values, axis=1)
         else:
@@ -193,7 +196,7 @@ class FeedForwardPolicy(DQNPolicy):
 
         return actions, q_values, None
 
-    def proba_step(self, obs, state=None, mask=None):        
+    def proba_step(self, obs, state=None, mask=None):
         return self.policy_proba(obs)
 
 
