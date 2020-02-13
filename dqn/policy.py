@@ -55,7 +55,8 @@ class DQNPolicy(BasePolicy):
         """
         raise NotImplementedError
 
-def nature_cnn_edited(scaled_images, activation, **kwargs):
+
+def nature_cnn_edited(activation, **kwargs):
     try:
         if not activation.isalpha():
             activ = activation
@@ -65,11 +66,23 @@ def nature_cnn_edited(scaled_images, activation, **kwargs):
         # print("There is no such activation function")
         activ = tf.nn.relu
 
-    layer_1 = activ(conv(scaled_images, 'c1', n_filters=32, filter_size=8, stride=4, init_scale=np.sqrt(2), **kwargs))
-    layer_2 = activ(conv(layer_1, 'c2', n_filters=64, filter_size=4, stride=2, init_scale=np.sqrt(2), **kwargs))
-    layer_3 = activ(conv(layer_2, 'c3', n_filters=64, filter_size=3, stride=1, init_scale=np.sqrt(2), **kwargs))
-    layer_3 = conv_to_fc(layer_3)
-    return activ(linear(layer_3, 'fc1', n_hidden=512, init_scale=np.sqrt(2)))
+    layer1      = tf.keras.layers.Conv2D(kernel_size=(8, 8), strides=(4, 4), padding="valid", filters=32, activation=activ)
+    layer1_pool = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
+
+    layer2      = tf.keras.layers.Conv2D(kernel_size=(4, 4), strides=(2, 2), padding="valid", filters=64, activation=activ)
+    layer2_pool = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
+
+    layer3      = tf.keras.layers.Conv2D(kernel_size=(3, 3), strides=(1, 1), padding="valid", filters=64, activation=activ)
+    layer3_pool = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
+
+    layer_flat  = tf.keras.layers.Flatten()
+
+    model = [layer1, layer1_pool,
+             layer2, layer2_pool,
+             layer3, layer3_pool,
+             layer_flat]
+
+    return model
 
 
 class QNetwork(tf.keras.layers.Layer):
@@ -121,17 +134,23 @@ class QNetwork(tf.keras.layers.Layer):
             self.trainable_layers = self.trainable_layers \
                                     + self.layers_VNet + [self.layer_out_VNet] + self.layer_norms_VNet
 
+        if self.feature_extraction == "cnn":
+            self.layers_CNN = nature_cnn_edited(self.activation)
+            self.trainable_layers += self.layers_CNN
+
     @tf.function
     def call(self, input):
         # print(input.shape)
+        h = input
         if self.feature_extraction == "cnn":
-            h = self.cnn_extractor(input, self.activation)    # TODO: Implement "new" cnn_extractor
-        else:
-            h = input
-            for i, layer in enumerate(self.layers):
+            # h = self.cnn_extractor(input, self.activation)    # TODO: Implement "new" cnn_extractor
+            for i, layer in enumerate(self.layers_CNN):
                 h = layer(h)
-                if self.layer_norm:
-                    h = self.layer_norms[i](h)
+
+        for i, layer in enumerate(self.layers):
+            h = layer(h)
+            if self.layer_norm:
+                h = self.layer_norms[i](h)
 
         action_scores = self.layer_out(h)
 
