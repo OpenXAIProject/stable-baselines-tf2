@@ -20,7 +20,7 @@ def main(args):
         buffer_size=50000,
         double_q=False,
         prioritized_replay=True,
-        dueling=False,
+        dueling=True,
         exploration_fraction=0.2,
         exploration_final_eps=0.02,
         model_path='cartpole_model_test'
@@ -35,7 +35,7 @@ def main(args):
         buffer_size=50000,
         double_q=False,
         prioritized_replay=True,
-        dueling=False,
+        dueling=True,
         exploration_fraction=0.2,
         exploration_final_eps=0.02,
         model_path='cartpole_model_test'
