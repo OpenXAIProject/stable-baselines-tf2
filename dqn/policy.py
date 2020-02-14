@@ -77,9 +77,13 @@ def nature_cnn_edited(activation, **kwargs):
 
     layer_flat  = tf.keras.layers.Flatten()
 
-    model = [layer1, layer1_pool,
-             layer2, layer2_pool,
-             layer3, layer3_pool,
+    # model = [layer1, layer1_pool,
+    #          layer2, layer2_pool,
+    #          layer3, layer3_pool,
+    #          layer_flat]
+    model = [layer1,
+             layer2,
+             layer3,
              layer_flat]
 
     return model
@@ -136,17 +140,19 @@ class QNetwork(tf.keras.layers.Layer):
 
         if self.feature_extraction == "cnn":
             self.layers_CNN = nature_cnn_edited(self.activation)
-            self.trainable_layers += self.layers_CNN
+            self.trainable_layers += self.layers_CNN[:3]
 
     @tf.function
     def call(self, input):
         # print(input.shape)
-        h = input
         if self.feature_extraction == "cnn":
             # h = self.cnn_extractor(input, self.activation)    # TODO: Implement "new" cnn_extractor
+            h = tf.cast(input, tf.float32)
             for i, layer in enumerate(self.layers_CNN):
                 h = layer(h)
-
+            extracted_features = h
+        else:
+            h = input
         for i, layer in enumerate(self.layers):
             h = layer(h)
             if self.layer_norm:
@@ -157,7 +163,10 @@ class QNetwork(tf.keras.layers.Layer):
         # TODO : Implement Dueling Network Here
         if self.dueling:
             # Value Network
-            h = input
+            if self.feature_extraction == "cnn":
+                h = extracted_features
+            else:
+                h = input
             for i, layer in enumerate(self.layers_VNet):
                 h = layer(h)
                 if self.layer_norm:

@@ -129,7 +129,6 @@ class DQN(ValueBasedRLAlgorithm):
     @tf.function
     def initialize_variables(self):
         zero_like_state = tf.zeros((1,) + self.observation_space.shape)
-        print("init size: ", zero_like_state.shape)
 
         self.q_function(zero_like_state)
         self.target_q_function(zero_like_state)
@@ -282,6 +281,7 @@ class DQN(ValueBasedRLAlgorithm):
         parameters = []
         weights = []
         for layer in self.trainable_layers:
+            # print(layer.name)
             weights.append(layer.get_weights())
 
         weights = np.array(weights)
@@ -305,6 +305,8 @@ class DQN(ValueBasedRLAlgorithm):
             pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
     def load_parameters(self, parameters, exact_match=False):
+        print(len(parameters), len(self.trainable_layers.weights))
+
         assert len(parameters) == len(self.trainable_layers.weights)
         weights = []
         for variable, parameter in zip(self.trainable_layers.weights, parameters):
