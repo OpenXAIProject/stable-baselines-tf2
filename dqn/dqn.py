@@ -92,11 +92,11 @@ class DQN(ValueBasedRLAlgorithm):
         batch_size = np.shape(obs)[0]
         max_actions = np.argmax(self.q_function(obs), axis=1)
 
-        if stochastic:                                  
+        if stochastic:
             random_actions = np.random.randint(low=0, high=self.n_actions, size=batch_size)
-            chose_random = np.random.uniform(size=np.stack([batch_size]), low=0, high=1) 
+            chose_random = np.random.uniform(size=np.stack([batch_size]), low=0, high=1)
             epsgreedy_actions = np.where(chose_random < eps, random_actions, max_actions)
-            
+
             return epsgreedy_actions
 
         else:
@@ -155,7 +155,7 @@ class DQN(ValueBasedRLAlgorithm):
                                                 initial_p=self.prioritized_replay_beta0,
                                                 final_p=1.0)
 
-        else:            
+        else:
             self.replay_buffer = ReplayBuffer(self.buffer_size)                
 
         # Create the schedule for exploration starting from 1.
@@ -177,7 +177,7 @@ class DQN(ValueBasedRLAlgorithm):
         for _ in tqdm(range(total_timesteps)):            
             # Take action and update exploration to the newest value            
             eps = self.exploration.value(self.num_timesteps)
-            env_action = self.act(np.array(obs)[None], eps=0.1, stochastic=True)[0]
+            env_action = self.act(np.array(obs)[None], eps=eps, stochastic=True)[0]
             new_obs, rew, done, info = self.env.step(env_action)
 
             # Store transition in the replay buffer.
@@ -203,7 +203,7 @@ class DQN(ValueBasedRLAlgorithm):
                     if self.prioritized_replay:
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = \
                             self.replay_buffer.sample(self.batch_size,
-                                                      beta=self.beta_schedule.value(self.num_timesteps))                        
+                                                      beta=self.beta_schedule.value(self.num_timesteps))
 
                     else:
                         obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.batch_size)                    
@@ -237,7 +237,7 @@ class DQN(ValueBasedRLAlgorithm):
                 print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))
 
                 # Save if mean_100ep_reward is lager than the past best result
-                if saved_mean_rewards == None or saved_mean_rewards < mean_100ep_reward:
+                if saved_mean_rewards is None or saved_mean_rewards < mean_100ep_reward:
                     self.save(self.model_path)
                     model_saved = True
                     saved_mean_rewards = mean_100ep_reward
