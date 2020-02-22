@@ -78,15 +78,18 @@ class DQN(ValueBasedRLAlgorithm):
         self.qfunc_layers        = self.policy.qnet.trainable_layers
         self.target_qfunc_layers = self.target_policy.qnet.trainable_layers
 
+        self.double_q_function_layers = []
+
         if self.double_q:
             self.double_q_function_layers = self.double_policy.qnet.trainable_layers
-        else:
-            self.double_q_function_layers = []
 
-        self.trainable_layers = self.qfunc_layers + self.target_qfunc_layers +  self.double_q_function_layers
-        self.params              = self.qfunc_layers.trainable_variables + self.target_qfunc_layers.trainable_variables
+        self.trainable_layers = self.qfunc_layers + self.target_qfunc_layers + self.double_q_function_layers
+        self.params           = self.qfunc_layers.trainable_variables + self.target_qfunc_layers.trainable_variables\
+                                + self.double_q_function_layers
 
         self.update_target()
+
+        self.initialize_variables()
 
     def act(self, obs, eps=1., stochastic=True):
         batch_size = np.shape(obs)[0]
@@ -102,7 +105,7 @@ class DQN(ValueBasedRLAlgorithm):
         else:
             return max_actions
     
-    @tf.function                    
+    @tf.function
     def train(self, obs_t, act_t, rew_t, obs_tp, done_mask, importance_weights):                
 
         if self.double_q:
@@ -115,13 +118,13 @@ class DQN(ValueBasedRLAlgorithm):
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
         q_t_selected_target = tf.cast(rew_t, tf.float32) + tf.cast(self.gamma, tf.float32) * q_tp1_best_masked
 
-        with tf.GradientTape() as tape:           
+        with tf.GradientTape() as tape:
             q_t_selected = tf.reduce_sum(self.q_function(obs_t) * tf.one_hot(act_t, self.n_actions), axis=1)
             td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
             errors = tf_util.huber_loss(td_error)
             weighted_error = tf.reduce_mean(errors)       
 
-        grads = tape.gradient(weighted_error, self.qfunc_layers.trainable_variables)    
+        grads = tape.gradient(weighted_error, self.qfunc_layers.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.qfunc_layers.trainable_variables))
 
         return td_error, weighted_error
@@ -205,21 +208,26 @@ class DQN(ValueBasedRLAlgorithm):
                             self.replay_buffer.sample(self.batch_size,
                                                       beta=self.beta_schedule.value(self.num_timesteps))
 
+
                     else:
                         obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.batch_size)                    
                         weights = np.ones_like(rewards)
                         batch_idxes = None
 
                     # Minimize the error in Bellman's equation on the sampled batch
-                    td_errors, error = self.train(obses_t, actions, rewards, obses_tp1, dones, weights)                                                
+                    td_errors, error = self.train(obses_t, actions, rewards, obses_tp1, dones, weights)
+
+                    if self.prioritized_replay:
+                        new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
+                        self.replay_buffer.update_priorities(batch_idxes, new_priorities)
 
                 if self.num_timesteps % self.target_network_update_freq == 0:
                     # Update target network periodically.
                     self.update_target()
 
-                if self.prioritized_replay:
-                    new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
-                    self.replay_buffer.update_priorities(batch_idxes, new_priorities)
+                # if self.prioritized_replay:
+                #     new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
+                #     self.replay_buffer.update_priorities(batch_idxes, new_priorities)
 
             if len(episode_rewards[-101:-1]) == 0:
                 mean_100ep_reward = -np.inf
