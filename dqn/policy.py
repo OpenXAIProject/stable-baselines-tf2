@@ -56,44 +56,7 @@ class DQNPolicy(BasePolicy):
         raise NotImplementedError
 
 
-# def nature_cnn_edited(activation, **kwargs):
-#     # try:
-#     #     if not activation.isalpha():
-#     #         activ = activation
-#     #     else:
-#     #         activ = eval("tf.keras.activations." + str(activation))
-#     # except AttributeError:
-#     #     # print("There is no such activation function")
-#     #     activ = tf.nn.relu
-#
-#     layer1      = tf.keras.layers.Conv2D(kernel_size=(8, 8), strides=(4, 4), padding="valid", filters=32, activation="relu")
-#     # layer1_pool = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
-#
-#     layer2      = tf.keras.layers.Conv2D(kernel_size=(4, 4), strides=(2, 2), padding="valid", filters=64, activation="relu")
-#     # layer2_pool = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
-#
-#     layer3      = tf.keras.layers.Conv2D(kernel_size=(3, 3), strides=(1, 1), padding="valid", filters=64, activation="relu")
-#     # layer3_pool = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
-#
-#     layer_flat  = tf.keras.layers.Flatten()
-#     layer_dense = tf.keras.layers.Dense(512, activation="relu")
-#     layer_dropout = tf.keras.layers.Dropout(rate=0.01, noise_shape=None, seed=None)
-#     # model = [layer1, layer1_pool,
-#     #          layer2, layer2_pool,
-#     #          layer3, layer3_pool,
-#     #          layer_flat]
-#     model = [layer1,
-#              layer2,
-#              layer3,
-#              layer_flat,
-#              layer_dense,
-#              layer_dropout]
-#
-#     return model
-
-
 class CNNetwork(tf.keras.layers.Layer):
-    # def __init__(self, input_shape, action_space):
     def __init__(self):
         super(CNNetwork, self).__init__()
         layer_conv1 = tf.keras.layers.Conv2D(name='c1', filters=32, kernel_size=8, strides=4, padding='valid',
@@ -110,14 +73,12 @@ class CNNetwork(tf.keras.layers.Layer):
 
         layer_flat = tf.keras.layers.Flatten(name='fc')
 
-        layer_dense = tf.keras.layers.Dense(512, name='fc1', activation='relu',
-                                          kernel_initializer=tf.keras.initializers.Orthogonal(np.sqrt(2)))
+        layer_dense = tf.keras.layers.Dense(512, name='fc1', activation='relu')
 
-        layer_dropout = tf.keras.layers.Dropout(0.5)
+        # layer_dropout = tf.keras.layers.Dropout(0.5)
 
-
-        self.model = [layer_conv1, layer_conv2, layer_conv3, layer_flat, layer_dense, layer_dropout]
-        # self.model = [layer_conv1, layer_conv2, layer_conv3, layer_flat, layer_dense]
+        # self.model = [layer_conv1, layer_conv2, layer_conv3, layer_flat, layer_dense, layer_dropout]
+        self.model = [layer_conv1, layer_conv2, layer_conv3, layer_flat, layer_dense]
 
     @tf.function
     def call(self, input):
@@ -126,14 +87,6 @@ class CNNetwork(tf.keras.layers.Layer):
             # print(layer.name)
             h = layer(h)
         return h
-
-#
-# class func():
-#     def __init__(self):
-#         self.a = "a"
-#
-#     def __call__(self, *args, **kwargs):
-#         print(self.a, args)
 
 
 class QNetwork(tf.keras.layers.Layer):
@@ -148,22 +101,32 @@ class QNetwork(tf.keras.layers.Layer):
 
         self.feature_extraction = feature_extraction
 
-        for i, layersize in enumerate(layers):
-            if i == 0:
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l1',
-                                              activation=activation, input_shape=(n_batch,) + obs_shape)
-                # print((n_batch,) + obs_shape)
+        if self.feature_extraction != "cnn":
+            for i, layersize in enumerate(layers):
+                if i == 0:
+                    layer = tf.keras.layers.Dense(layersize, name=name+'/l1',
+                                                  activation=activation, input_shape=(n_batch,) + obs_shape)
 
-            else:
-                layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
-                                              activation=activation)
-            # print(layersize)
-            self.layers.append(layer)
+                else:
+                    layer = tf.keras.layers.Dense(layersize, name=name+'/l%d' % (i+1),
+                                                  activation=activation)
+                self.layers.append(layer)
 
-            if self.layer_norm:
-                self.layer_norms_QNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
-        self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
-        self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms
+                if self.layer_norm:
+                    self.layer_norms_QNet.append(tf.keras.layers.LayerNormalization(epsilon=1e-4))
+
+            self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
+            self.trainable_layers = self.layers + [self.layer_out] + self.layer_norms
+
+        else:
+            self.cnn_extractor = cnn_extractor
+
+            self.conv_net = CNNetwork()
+            self.conv_layers = self.conv_net.model
+
+            self.layer_out = tf.keras.layers.Dense(n_action, name=name + '/out')
+
+            self.trainable_layers = self.conv_layers[0:3] + [self.conv_layers[4], self.layer_out]
 
         if self.dueling:
             self.layer_norms_VNet = []
@@ -185,36 +148,18 @@ class QNetwork(tf.keras.layers.Layer):
             self.trainable_layers = self.trainable_layers \
                                     + self.layers_VNet + [self.layer_out_VNet] + self.layer_norms_VNet
 
-        if self.feature_extraction == "cnn":
-            self.cnn_extractor = cnn_extractor
-            # self.layers_CNN = nature_cnn_edited(self.activation)
-            # self.trainable_layers += self.layers_CNN[:3]
-
-            self.conv_net = CNNetwork()
-            self.conv_layers = self.conv_net.model
-
-            self.trainable_layers += self.conv_layers[0:3] + self.conv_layers[4:1]
 
     @tf.function
     def call(self, input):
-        # print("call")
         if self.feature_extraction == "cnn":
-            # h = self.cnn_extractor(input, self.activation)    # TODO: Implement "new" cnn_extractor
-            # h = tf.cast(input, tf.float32)
-            #
-            # for i, layer in enumerate(self.layers_CNN):
-            #     # print(h.shape)
-            #     h = layer(h)
             extracted_features = self.conv_net(input)
             h = extracted_features
-            # print(extracted_features)
         else:
             h = input
-        for i, layer in enumerate(self.layers):
-            h = layer(h)
-            if self.layer_norm:
-                h = self.layer_norms[i](h)
-
+            for i, layer in enumerate(self.layers):
+                h = layer(h)
+                if self.layer_norm:
+                    h = self.layer_norms[i](h)
         action_scores = self.layer_out(h)
 
         # TODO : Implement Dueling Network Here
