@@ -29,7 +29,7 @@ class DQN(ValueBasedRLAlgorithm):
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,    
                  prioritized_replay_alpha=0.6, prioritized_replay_beta0=0.4, prioritized_replay_beta_iters=None,
                  prioritized_replay_eps=1e-6, _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
-                 dueling=False,
+                 dueling=True,
                  model_path='~/params/'):
 
         #Create an instance for save and load path
@@ -186,6 +186,7 @@ class DQN(ValueBasedRLAlgorithm):
             # Store transition in the replay buffer.
             self.replay_buffer.add(obs, env_action, rew, new_obs, np.float32(done))
             obs = copy.deepcopy(new_obs)
+            obs_first = obs[:,:,0]
             episode_rewards[-1] += rew
 
             if done:
