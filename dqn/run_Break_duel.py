@@ -59,7 +59,7 @@ def main():
         learning_rate=1e-4,
         buffer_size=10000,
         double_q=False,
-        prioritized_replay=False,
+        prioritized_replay=True,
         prioritized_replay_alpha=0.6,
         dueling=True,
         train_freq=4,
@@ -69,7 +69,9 @@ def main():
         target_network_update_freq=1000,
         model_path='atari_Breakout_duel'
     )
-    model.learn(total_timesteps=args.num_timesteps)
+    # model.learn(total_timesteps=args.num_timesteps, seed=args.seed)
+    model.load('atari_Breakout_duel')
+    model.evaluate(100)
     env.close()
 
 

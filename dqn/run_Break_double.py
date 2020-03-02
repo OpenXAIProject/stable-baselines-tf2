@@ -84,7 +84,8 @@ def main():
         model_path='atari_Breakout_double'
     )
     # generate_expert_traj(model, 'expert_cartpole', n_timesteps=int(1e5), n_episodes=10)
-    model.learn(total_timesteps=args.num_timesteps)
+    # model.learn(total_timesteps=args.num_timesteps, seed=args.seed)
+
     env.close()
 
 
