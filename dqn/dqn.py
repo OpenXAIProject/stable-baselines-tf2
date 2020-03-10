@@ -29,7 +29,7 @@ class DQN(ValueBasedRLAlgorithm):
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,    
                  prioritized_replay_alpha=0.6, prioritized_replay_beta0=0.4, prioritized_replay_beta_iters=None,
                  prioritized_replay_eps=1e-6, _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
-                 dueling=False,
+                 dueling=True,
                  model_path='~/params/'):
 
         #Create an instance for save and load path
@@ -141,7 +141,12 @@ class DQN(ValueBasedRLAlgorithm):
     def update_target(self):
         for var, var_target in zip(self.qfunc_layers, self.target_qfunc_layers):
             w = var.get_weights()
-            var_target.set_weights(w)       
+            var_target.set_weights(w)
+
+    # def update_double(self):
+    #     for var, var_double in zip(self.qfunc_layers, self.double_q_function_layers):
+    #         w = var.get_weights()
+    #         var_double.set_weights(w)
 
     def learn(self, total_timesteps, callback=None, seed=None, log_interval=100, tb_log_name="DQN",
               reset_num_timesteps=True):
@@ -177,7 +182,8 @@ class DQN(ValueBasedRLAlgorithm):
         
         self.episode_reward = np.zeros((1,))
 
-        for _ in tqdm(range(total_timesteps)):            
+        for _ in tqdm(range(total_timesteps)):
+            # self.env.render()
             # Take action and update exploration to the newest value            
             eps = self.exploration.value(self.num_timesteps)
             env_action = self.act(np.array(obs)[None], eps=eps, stochastic=True)[0]
@@ -208,7 +214,6 @@ class DQN(ValueBasedRLAlgorithm):
                             self.replay_buffer.sample(self.batch_size,
                                                       beta=self.beta_schedule.value(self.num_timesteps))
 
-
                     else:
                         obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.batch_size)                    
                         weights = np.ones_like(rewards)
@@ -217,6 +222,9 @@ class DQN(ValueBasedRLAlgorithm):
                     # Minimize the error in Bellman's equation on the sampled batch
                     td_errors, error = self.train(obses_t, actions, rewards, obses_tp1, dones, weights)
 
+                    # if self.double_q:
+                    #     self.update_double()
+
                     if self.prioritized_replay:
                         new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
                         self.replay_buffer.update_priorities(batch_idxes, new_priorities)
@@ -224,10 +232,6 @@ class DQN(ValueBasedRLAlgorithm):
                 if self.num_timesteps % self.target_network_update_freq == 0:
                     # Update target network periodically.
                     self.update_target()
-
-                # if self.prioritized_replay:
-                #     new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
-                #     self.replay_buffer.update_priorities(batch_idxes, new_priorities)
 
             if len(episode_rewards[-101:-1]) == 0:
                 mean_100ep_reward = -np.inf
@@ -241,7 +245,7 @@ class DQN(ValueBasedRLAlgorithm):
                 print("- steps : ", self.num_timesteps)
                 print("- episodes : ", num_episodes)
                 print("- mean 100 episode reward : %.4f" % mean_100ep_reward)
-                print("- recent mean TD error : %.4f" % error)                
+                print("- recent mean TD error : %.4f" % error)
                 print("- % time spent exploring : ", int(100 * self.exploration.value(self.num_timesteps)))
 
                 # Save if mean_100ep_reward is lager than the past best result
@@ -254,6 +258,26 @@ class DQN(ValueBasedRLAlgorithm):
 
             self.num_timesteps += 1
 
+        return self
+    def play(self, total_timesteps, callback=None, seed=None, log_interval=100, tb_log_name="DQN",
+              reset_num_timesteps=True):
+
+        self.episode_reward = np.zeros((1,))
+
+        obs = self.env.reset()
+
+        for _ in tqdm(range(total_timesteps)):
+            self.env.render()
+            env_action = self.act(np.array(obs)[None], eps=0, stochastic=True)[0]
+            new_obs, rew, done, info = self.env.step(env_action)
+            obs = copy.deepcopy(new_obs)
+
+            if done:
+                maybe_is_success = info.get('is_success')
+                if maybe_is_success is not None:
+                    pass
+                if not isinstance(self.env, VecEnv):
+                    obs = self.env.reset()
         return self
 
     def predict(self, observation, state=None, mask=None, deterministic=True):

@@ -90,7 +90,7 @@ class CNNetwork(tf.keras.layers.Layer):
 
 
 class QNetwork(tf.keras.layers.Layer):
-    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=False, n_batch=None, activation='relu',
+    def __init__(self, layers, obs_shape, n_action, name='q', layer_norm=False, dueling=True, n_batch=None, activation='relu',
                  cnn_extractor=CNNetwork, feature_extraction="cnn"):
         super(QNetwork, self).__init__()
         self.layer_norm = layer_norm

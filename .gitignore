@@ -9,3 +9,6 @@ results/*
 results_final/*
 train.sh
 *.pkl
+/dqn/run_Break_double.py
+/dqn/run_Break_duel.py
+/dqn/train_atari_Breakout.py
